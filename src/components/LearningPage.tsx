@@ -16,6 +16,7 @@ import {
   getCachedSession,
   updateLearningState,
   updatePreferences,
+  type SavedTopic as SessionSavedTopic,
 } from "../services/appSession";
 
 const RECENT_TOPICS_STORAGE_KEY = "lernoRecentTopics";
@@ -33,14 +34,18 @@ type TopicItem = {
   unitTopics?: string[];
 };
 
+type UnitItem = { title: string; topics: string[] };
+
 type SavedTopic = TopicItem & {
   lastVisitedAt: number;
 };
 
-type SubjectSearchItem = {
-  subjectTitle: string;
-  units: UnitItem[];
-};
+function sessionTopicsToSaved(topics: SessionSavedTopic[]): SavedTopic[] {
+  return topics.map((t) => ({
+    ...t,
+    lastVisitedAt: t.lastVisitedAt ?? Date.now(),
+  }));
+}
 
 type UnitSearchItem = {
   title: string;
@@ -172,15 +177,8 @@ const LearningPage = () => {
   const [videoLoading, setVideoLoading] = useState(false);
   const latestVideoRequestRef = useRef(0);
 
-  type UnitItem = { title: string; topics: string[] };
-  type SubjectMatch = {
-    subjectTitle: string;
-    units: UnitItem[];
-  } | null;
-
   const [unitsList, setUnitsList] = useState<UnitItem[]>([]);
   const [selectedUnitIndex, setSelectedUnitIndex] = useState<number | null>(null);
-  const [unitTopics, setUnitTopics] = useState<string[]>([]);
   const [syllabusSubjectTitle, setSyllabusSubjectTitle] = useState("");
   const [selectedUnitTitle, setSelectedUnitTitle] = useState("");
   const [selectedUnitTopicsDisplay, setSelectedUnitTopicsDisplay] = useState<string[]>([]);
@@ -239,23 +237,6 @@ const LearningPage = () => {
     });
     return list;
   }, []);
-  const allSubjects = useMemo(() => {
-    const subjectMap = new Map<string, SubjectSearchItem>();
-    Object.values(coursesData).forEach((course) => {
-      Object.values(course.years).forEach((year) => {
-        Object.entries(year.subjects).forEach(([subjectKey, rawSubject]) => {
-          const subject: any = rawSubject;
-          const subjectTitle = subject?.name || subjectKey;
-          if (subjectMap.has(subjectTitle.toLowerCase())) return;
-          subjectMap.set(subjectTitle.toLowerCase(), {
-            subjectTitle,
-            units: Array.isArray(subject?.units) ? subject.units : [],
-          });
-        });
-      });
-    });
-    return Array.from(subjectMap.values());
-  }, []);
   const allUnits = useMemo(() => {
     const list: UnitSearchItem[] = [];
     Object.values(coursesData).forEach((course) => {
@@ -297,8 +278,7 @@ const LearningPage = () => {
   ];
 
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
-  const [isSpeaking, setIsSpeaking] = useState(false);
-  
+
   // Exam questions state
   const [examQuestions, setExamQuestions] = useState<GeneratedExamQuestions | null>(null);
   const [examQuestionsLoading, setExamQuestionsLoading] = useState(false);
@@ -356,71 +336,6 @@ const LearningPage = () => {
   };
 
   const [direction, setDirection] = useState(1);
-
-  // Get Samantha voice (macOS Siri-like voice)
-  const getSamanthaVoice = (): SpeechSynthesisVoice | null => {
-    const synth = window.speechSynthesis;
-    const voices = synth.getVoices();
-    
-    // Look for Samantha voice specifically
-    const samantha = voices.find(
-      (v) => v.name === "Samantha" || v.name.includes("Samantha")
-    );
-    if (samantha) return samantha;
-    
-    // Fallback to any English voice if Samantha not available
-    return voices.find((v) => v.lang.startsWith("en")) || null;
-  };
-
-  const toggleNarration = () => {
-    const synth = window.speechSynthesis;
-    
-    if (!isSpeaking && displayNarration) {
-      synth.cancel();
-      
-      const utterance = new SpeechSynthesisUtterance(displayNarration);
-      
-      // Get Samantha voice
-      const voice = getSamanthaVoice();
-      if (voice) {
-        utterance.voice = voice;
-      }
-      
-      utterance.lang = "en-US";
-      utterance.pitch = 1.0;
-      utterance.rate = 0.9; // Slightly slower for clarity
-      utterance.volume = 1;
-      
-      // Handle speech end
-      utterance.onend = () => {
-        setIsSpeaking(false);
-      };
-      
-      // Handle speech error
-      utterance.onerror = () => {
-        setIsSpeaking(false);
-      };
-      
-      synth.speak(utterance);
-      setIsSpeaking(true);
-    } else {
-      synth.cancel();
-      setIsSpeaking(false);
-    }
-  };
-
-  // Load voices when component mounts
-  useEffect(() => {
-    const loadVoices = () => {
-      window.speechSynthesis.getVoices();
-    };
-    
-    loadVoices();
-    
-    if (window.speechSynthesis.onvoiceschanged !== undefined) {
-      window.speechSynthesis.onvoiceschanged = loadVoices;
-    }
-  }, []);
 
   useEffect(() => {
     const handleClickAway = (event: MouseEvent) => {
@@ -551,8 +466,10 @@ const LearningPage = () => {
 
         setTheme(session.preferences.theme);
         setSidebarCollapsed(Boolean(session.preferences.sidebarCollapsed));
-        setRecentTopics(session.learningState.recentTopics || []);
-        setBookmarkedTopics(session.learningState.bookmarkedTopics || []);
+        setRecentTopics(sessionTopicsToSaved(session.learningState.recentTopics || []));
+        setBookmarkedTopics(
+          sessionTopicsToSaved(session.learningState.bookmarkedTopics || [])
+        );
 
         const currentSelection = session.learningState.currentSelection || {};
         setSelectedTopicTitle(currentSelection.title || "");
@@ -597,13 +514,11 @@ const LearningPage = () => {
   useEffect(() => {
     return () => {
       window.speechSynthesis.cancel();
-      setIsSpeaking(false);
     };
   }, []);
 
   useEffect(() => {
     window.speechSynthesis.cancel();
-    setIsSpeaking(false);
   }, [currentSlideIndex, displayNarration]);
 
   useEffect(() => {
@@ -744,28 +659,10 @@ const LearningPage = () => {
     setSearchDropdownOpen(false);
   };
 
-  const openSubjectSuggestion = (subject: SubjectSearchItem) => {
-    setSyllabusSubjectTitle(subject.subjectTitle);
-    setUnitsList(subject.units);
-    setSelectedUnitIndex(null);
-    setUnitTopics([]);
-    setSelectedUnitTitle("");
-    setSelectedUnitTopicsDisplay([]);
-    setSelectedTopicTitle("");
-    setSelectedTopicVideoUrl("");
-    setSelectedTopicNarration("");
-    setVideoLoading(false);
-    setVideoMessage("Select a unit or topic to start learning.");
-    setExamQuestions(null);
-    setSearch("");
-    setSearchDropdownOpen(false);
-  };
-
   const openUnitSuggestion = (unit: UnitSearchItem) => {
     setSyllabusSubjectTitle(unit.subjectTitle);
     setUnitsList([]);
     setSelectedUnitIndex(null);
-    setUnitTopics(unit.topics);
     setSelectedUnitTitle(unit.title);
     setSelectedUnitTopicsDisplay(unit.topics);
     setSelectedTopicTitle("");
@@ -1356,7 +1253,6 @@ const LearningPage = () => {
                   key={unit.title}
                   onClick={() => {
                     setSelectedUnitIndex(idx);
-                    setUnitTopics(unit.topics);
                     setSelectedUnitTitle(unit.title);
                     setSelectedUnitTopicsDisplay(unit.topics);
                     setUnitsList([]);

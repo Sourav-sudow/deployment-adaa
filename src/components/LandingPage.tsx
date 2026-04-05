@@ -1,4 +1,3 @@
-import React from "react";
 import { WavyBackground } from "../ui/wavy-background";
 import { ContainerScroll } from "../ui/container-scroll-animation";
 import { HoverEffect } from "../ui/card-hover-effect";

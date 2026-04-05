@@ -178,7 +178,7 @@ export async function generateMCQsFromTopic(
       .map((item: any) => ({
         question: String(item.question || ""),
         choices: Array.isArray(item.choices)
-          ? item.choices.slice(0, 4).map((c) => String(c))
+          ? item.choices.slice(0, 4).map((c: unknown) => String(c))
           : [],
         correctIndex: Number.isInteger(item.correctIndex)
           ? item.correctIndex

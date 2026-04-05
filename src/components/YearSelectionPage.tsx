@@ -1,4 +1,3 @@
-import React from "react";
 import { useNavigate } from "react-router-dom";
 import { SparklesCore } from "../ui/sparkles";
 import { coursesData, Course } from "../data/coursesData";

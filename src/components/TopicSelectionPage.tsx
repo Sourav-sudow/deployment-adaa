@@ -1,4 +1,3 @@
-import React from "react";
 import { useNavigate } from "react-router-dom";
 import { SparklesCore } from "../ui/sparkles";
 import { coursesData, Course } from "../data/coursesData";
@@ -19,12 +18,20 @@ export default function TopicSelectionPage() {
   }
 
   const yearData = courseData.years[selectedYear as keyof typeof courseData.years];
-  const subjectData = yearData?.subjects[selectedSubject as keyof typeof yearData.subjects];
+  const subjectKey = selectedSubject as keyof NonNullable<typeof yearData>["subjects"];
+  const rawSubject = yearData?.subjects[subjectKey];
 
-  if (!subjectData) {
+  if (
+    !yearData ||
+    !rawSubject ||
+    typeof rawSubject !== "object" ||
+    !("topics" in rawSubject)
+  ) {
     navigate("/subjects");
     return null;
   }
+
+  const subjectData = rawSubject as { name: string; topics: TopicEntry[] };
 
   const handleTopicSelect = (topic: TopicEntry) => {
     const title = typeof topic === "string" ? topic : topic.title;

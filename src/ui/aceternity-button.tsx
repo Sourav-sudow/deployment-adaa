@@ -1,7 +1,12 @@
-import React from "react";
+import type { ReactNode } from "react";
 import { motion } from "framer-motion";
 
-export const AceternityButton = ({ children, onClick }) => {
+type AceternityButtonProps = {
+  children: ReactNode;
+  onClick?: () => void;
+};
+
+export const AceternityButton = ({ children, onClick }: AceternityButtonProps) => {
   return (
     <motion.button
       onClick={onClick}

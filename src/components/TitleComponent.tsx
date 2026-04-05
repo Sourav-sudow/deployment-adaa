@@ -1,7 +1,9 @@
-import React from "react";
 import { AnimatedShinyText } from "@/ui/animated-shiny-text";
 import { cn } from "@/lib/utils";
-const TitleComponent = ({ title }) => {
+
+type TitleComponentProps = { title: string };
+
+const TitleComponent = ({ title }: TitleComponentProps) => {
   return (
     <div
       className={cn(
