@@ -21,6 +21,8 @@ import time
 from email.mime.text import MIMEText
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DEFAULT_FIREBASE_CRED_FILENAME = "lerno-cd286-firebase-adminsdk-fbsvc-222d396b1f.json"
+DEFAULT_FIREBASE_STORAGE_BUCKET = "lerno-cd286.firebasestorage.app"
 
 # Always load backend/.env explicitly and override any stale shell values.
 env_path = os.path.join(BASE_DIR, ".env")
@@ -32,28 +34,81 @@ local_env = os.path.join(BASE_DIR, ".env.local")
 if os.path.exists(local_env):
     load_dotenv(local_env, override=True)
 
-cred_path = os.path.join(BASE_DIR, "lerno-cd286-firebase-adminsdk-fbsvc-222d396b1f.json")
 bucket = None
 try:
-    if os.path.exists(cred_path):
-        # Validate JSON first to avoid json.decoder.JSONDecodeError crashing the process
+    firebase_storage_bucket = (
+        os.getenv("FIREBASE_STORAGE_BUCKET")
+        or DEFAULT_FIREBASE_STORAGE_BUCKET
+    ).strip()
+    firebase_cred_path = (
+        os.getenv("FIREBASE_SERVICE_ACCOUNT_PATH")
+        or os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+        or os.path.join(BASE_DIR, DEFAULT_FIREBASE_CRED_FILENAME)
+    ).strip()
+    firebase_json = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON", "").strip()
+    firebase_project_id = os.getenv("FIREBASE_PROJECT_ID", "").strip()
+    firebase_private_key_id = os.getenv("FIREBASE_PRIVATE_KEY_ID", "").strip()
+    firebase_private_key = os.getenv("FIREBASE_PRIVATE_KEY", "")
+    firebase_client_email = os.getenv("FIREBASE_CLIENT_EMAIL", "").strip()
+    firebase_client_id = os.getenv("FIREBASE_CLIENT_ID", "").strip()
+
+    cred = None
+    cred_source = None
+
+    if firebase_json:
         try:
-            with open(cred_path, "r", encoding="utf-8") as jf:
+            cred = credentials.Certificate(json.loads(firebase_json))
+            cred_source = "FIREBASE_SERVICE_ACCOUNT_JSON"
+        except Exception as e:
+            print(f"Firebase JSON from env is invalid: {e}")
+            raise
+    elif firebase_project_id and firebase_private_key and firebase_client_email:
+        try:
+            cred = credentials.Certificate(
+                {
+                    "type": "service_account",
+                    "project_id": firebase_project_id,
+                    "private_key_id": firebase_private_key_id,
+                    "private_key": firebase_private_key.replace("\\n", "\n"),
+                    "client_email": firebase_client_email,
+                    "client_id": firebase_client_id,
+                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                    "token_uri": "https://oauth2.googleapis.com/token",
+                    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+                    "client_x509_cert_url": "",
+                }
+            )
+            cred_source = "split FIREBASE_* env vars"
+        except Exception as e:
+            print(f"Firebase credentials from split env vars are invalid: {e}")
+            raise
+    elif firebase_cred_path and os.path.exists(firebase_cred_path):
+        try:
+            with open(firebase_cred_path, "r", encoding="utf-8") as jf:
                 json.load(jf)
         except Exception as e:
             print(f"Firebase credential file is present but invalid JSON: {e}")
             raise
 
+        cred = credentials.Certificate(firebase_cred_path)
+        cred_source = firebase_cred_path
+
+    if cred is not None:
         try:
-            cred = credentials.Certificate(cred_path)
-            firebase_admin.initialize_app(cred, {"storageBucket": "lerno-cd286.firebasestorage.app"})
-            bucket = storage.bucket()
-            print("Firebase initialized, storage bucket configured.")
+            firebase_admin.initialize_app(
+                cred,
+                {"storageBucket": firebase_storage_bucket} if firebase_storage_bucket else None,
+            )
+            bucket = storage.bucket() if firebase_storage_bucket else None
+            print(f"Firebase initialized using {cred_source}.")
         except Exception as e:
             print(f"Failed to initialize Firebase SDK: {e}")
             bucket = None
     else:
-        print(f"Firebase credentials not found at {cred_path}; skipping Firebase initialization.")
+        print(
+            "Firebase credentials not found. Set FIREBASE_SERVICE_ACCOUNT_PATH, "
+            "FIREBASE_SERVICE_ACCOUNT_JSON, or split FIREBASE_* env vars to enable Firestore."
+        )
         bucket = None
 except Exception:
     # Any error above should not prevent the backend from starting — continue without Firebase
@@ -61,26 +116,58 @@ except Exception:
 
 anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
 google_api_key = os.getenv("GOOGLE_API_KEY")
+model = None
+
+gemini_model = None
+use_gemini = bool(google_api_key)
 
 if not anthropic_api_key:
-    raise ValueError("ANTHROPIC_API_KEY not found in environment variables or .env file")
+    print(
+        "ANTHROPIC_API_KEY not found. Claude-powered content generation will be unavailable, "
+        "but the rest of the API can still start."
+    )
 
-use_gemini = False
-if google_api_key:
+
+def get_gemini_model():
+    global gemini_model, use_gemini
+
+    if not google_api_key:
+        return None
+
+    if gemini_model is not None:
+        return gemini_model
+
     try:
         from langchain_google_genai import ChatGoogleGenerativeAI
-        gemini_model = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=google_api_key)
-        use_gemini = True
+
+        gemini_model = ChatGoogleGenerativeAI(
+            model="gemini-2.5-flash",
+            google_api_key=google_api_key,
+        )
+        return gemini_model
     except (ImportError, Exception) as e:
         print(f"Failed to initialize Gemini: {e}")
         print("Will use Claude for classification instead.")
+        use_gemini = False
+        return None
 
-model = ChatAnthropic(
-    model_name="claude-3-7-sonnet-20250219",
-    anthropic_api_key=anthropic_api_key,
-    temperature=0.7,
-    max_tokens=4000
-)
+
+def get_claude_model():
+    global model
+
+    if model is not None:
+        return model
+
+    if not anthropic_api_key:
+        return None
+
+    model = ChatAnthropic(
+        model_name="claude-3-7-sonnet-20250219",
+        anthropic_api_key=anthropic_api_key,
+        temperature=0.7,
+        max_tokens=4000,
+    )
+    return model
 
 wikipedia = WikipediaAPIWrapper(top_k_results=2)
 
@@ -471,7 +558,10 @@ If you did not request this code, you can ignore this email.""",
 
 def generate_response(prompt):
     """Extract JSON from Claude's response"""
-    message = model.invoke(prompt)
+    claude_model = get_claude_model()
+    if claude_model is None:
+        raise RuntimeError("Claude model is not configured. Set ANTHROPIC_API_KEY to use content generation.")
+    message = claude_model.invoke(prompt)
     text = message.content
     json_match = re.search(r"\{.*\}", text, re.DOTALL)
     if json_match:
@@ -481,24 +571,33 @@ def generate_response(prompt):
 
 def generate_response_raw(prompt):
     """Get raw text response from Claude"""
-    message = model.invoke(prompt)
+    claude_model = get_claude_model()
+    if claude_model is None:
+        raise RuntimeError("Claude model is not configured. Set ANTHROPIC_API_KEY to use content generation.")
+    message = claude_model.invoke(prompt)
     return message.content.strip()
 
 def classify_input(user_input):
     """Classifies user input into topic and audience using Gemini if available, otherwise uses Claude."""
     if use_gemini:
-        try:
-            prompt = f"""Classify the following input into a topic and audience. If no audience is provided, default to college student.
-            Return the response as a JSON object with "topic" and "audience" as keys.
+        active_gemini_model = get_gemini_model()
+        if active_gemini_model is not None:
+            try:
+                prompt = f"""Classify the following input into a topic and audience. If no audience is provided, default to college student.
+                Return the response as a JSON object with "topic" and "audience" as keys.
 
-            Input: {user_input}
-            Output:
-            """
-            response = gemini_model.invoke(prompt)
-            result = json.loads(response.content)
-            return result
-        except Exception as e:
-            print(f"Error using Gemini for classification: {e}")
+                Input: {user_input}
+                Output:
+                """
+                response = active_gemini_model.invoke(prompt)
+                result = json.loads(response.content)
+                return result
+            except Exception as e:
+                print(f"Error using Gemini for classification: {e}")
+
+    claude_model = get_claude_model()
+    if claude_model is None:
+        return {"topic": user_input, "audience": "college student"}
     
     prompt = f"""Classify the following input into a topic to explain and an audience level. If no audience level is explicitly mentioned, default to "college student".
 
@@ -512,7 +611,7 @@ def classify_input(user_input):
     """
     
     try:
-        response = model.invoke(prompt)
+        response = claude_model.invoke(prompt)
         text = response.content
         json_match = re.search(r"\{.*\}", text, re.DOTALL)
         if json_match:
@@ -1272,12 +1371,15 @@ async def index(item:prompt):
             mp4_path= f"media/videos/animation_{scene_number}/480p15/Scene{scene_number}.mp4"
 
             if os.path.exists(mp4_path):
-                file_name = f"{uuid.uuid4()}_Scene{scene_number}.mp4"
-                blob = bucket.blob(file_name)
-                blob.upload_from_filename(mp4_path, content_type="video/mp4")
-                blob.make_public()
-                video_urls.append(blob.public_url)
-                print(f"Successfully uploaded {mp4_path} to Firebase")
+                if bucket is not None:
+                    file_name = f"{uuid.uuid4()}_Scene{scene_number}.mp4"
+                    blob = bucket.blob(file_name)
+                    blob.upload_from_filename(mp4_path, content_type="video/mp4")
+                    blob.make_public()
+                    video_urls.append(blob.public_url)
+                    print(f"Successfully uploaded {mp4_path} to Firebase")
+                else:
+                    print("Firebase Storage bucket is not configured; skipping video upload.")
             else:
                 print(f"Rendered video not found at {mp4_path}")
 

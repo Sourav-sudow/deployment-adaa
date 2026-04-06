@@ -4,6 +4,7 @@ import { SparklesCore } from "../ui/sparkles";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { MultiStepLoader } from "@/ui/multi-step-loader";
+import { API_BASE_URL } from "../services/apiBaseUrl";
 
 export default function PlaceholdersAndVanishInputDemo() {
   const navigate = useNavigate();
@@ -34,7 +35,7 @@ export default function PlaceholdersAndVanishInputDemo() {
     setIsLoading(true);
 
     try {
-      const response = await axios.post("http://localhost:8000/process-data", {
+      const response = await axios.post(`${API_BASE_URL}/process-data`, {
         prompt: inputValue,
       });
       console.log(response.data);

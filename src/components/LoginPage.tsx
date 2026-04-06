@@ -12,8 +12,7 @@ import {
   type UserRole,
   verifyOtpAndBootstrap,
 } from "../services/appSession";
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+import { API_BASE_URL } from "../services/apiBaseUrl";
 const OTP_LENGTH = 6;
 
 type OtpResponse = {
