@@ -92,11 +92,17 @@ export async function resolveTopicVideo(input: {
   subjectTitle?: string;
   unitTitle?: string;
 }): Promise<string | null> {
-  const override = await fetchTopicVideoOverride({
-    subjectTitle: input.subjectTitle,
-    unitTitle: input.unitTitle,
-    topicTitle: input.title,
-  });
+  let override: Awaited<ReturnType<typeof fetchTopicVideoOverride>> = null;
+  try {
+    override = await fetchTopicVideoOverride({
+      subjectTitle: input.subjectTitle,
+      unitTitle: input.unitTitle,
+      topicTitle: input.title,
+    });
+  } catch {
+    // Production has no local FastAPI; failed fetch must not block JSON / YouTube fallbacks.
+    override = null;
+  }
   if (override?.videoUrl) {
     return override.videoUrl;
   }

@@ -78,7 +78,7 @@ const AIChatbot = ({
       });
       setMessages((prev) => [...prev, { type: "bot", text: responseText }]);
     } catch (error) {
-      console.error("Error with WebLLM:", error);
+      console.error("AI tutor error:", error);
       const errText =
         (error as Error)?.message ||
         "Sorry, I couldn't process your request right now. Please try again later.";
