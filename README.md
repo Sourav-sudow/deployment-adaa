@@ -117,3 +117,4 @@ lerno-ai/
 1. API Key Issues : Ensure all API keys in the .env file are correct and have the necessary permissions.
 2. Port Conflicts : If you encounter port conflicts, modify the PORT variables in the .env file.
 3. Dependency Issues : Make sure all dependencies are installed correctly with npm install and pip install -r requirements.txt .
+# final-year-project
