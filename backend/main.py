@@ -61,46 +61,59 @@ try:
     firebase_client_email = os.getenv("FIREBASE_CLIENT_EMAIL", "").strip()
     firebase_client_id = os.getenv("FIREBASE_CLIENT_ID", "").strip()
 
+    def build_service_account_payload() -> Dict[str, Any]:
+        private_key = firebase_private_key.strip()
+        if private_key.startswith('"') and private_key.endswith('"'):
+            private_key = private_key[1:-1]
+        if private_key.startswith("'") and private_key.endswith("'"):
+            private_key = private_key[1:-1]
+
+        payload: Dict[str, Any] = {
+            "type": "service_account",
+            "project_id": firebase_project_id,
+            "private_key_id": firebase_private_key_id,
+            "private_key": private_key.replace("\\n", "\n"),
+            "client_email": firebase_client_email,
+            "client_id": firebase_client_id,
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+        }
+
+        client_x509_cert_url = os.getenv("FIREBASE_CLIENT_X509_CERT_URL", "").strip()
+        if client_x509_cert_url:
+            payload["client_x509_cert_url"] = client_x509_cert_url
+
+        return payload
+
     cred = None
     cred_source = None
 
-    if firebase_json:
+    if firebase_project_id and firebase_private_key and firebase_client_email:
+        try:
+            cred = credentials.Certificate(build_service_account_payload())
+            cred_source = "split FIREBASE_* env vars"
+        except Exception as e:
+            print(f"Firebase credentials from split env vars are invalid: {e}")
+            cred = None
+
+    if cred is None and firebase_json:
         try:
             cred = credentials.Certificate(json.loads(firebase_json))
             cred_source = "FIREBASE_SERVICE_ACCOUNT_JSON"
         except Exception as e:
             print(f"Firebase JSON from env is invalid: {e}")
-            raise
-    elif firebase_project_id and firebase_private_key and firebase_client_email:
-        try:
-            cred = credentials.Certificate(
-                {
-                    "type": "service_account",
-                    "project_id": firebase_project_id,
-                    "private_key_id": firebase_private_key_id,
-                    "private_key": firebase_private_key.replace("\\n", "\n"),
-                    "client_email": firebase_client_email,
-                    "client_id": firebase_client_id,
-                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                    "token_uri": "https://oauth2.googleapis.com/token",
-                    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-                    "client_x509_cert_url": "",
-                }
-            )
-            cred_source = "split FIREBASE_* env vars"
-        except Exception as e:
-            print(f"Firebase credentials from split env vars are invalid: {e}")
-            raise
-    elif firebase_cred_path and os.path.exists(firebase_cred_path):
+            cred = None
+
+    if cred is None and firebase_cred_path and os.path.exists(firebase_cred_path):
         try:
             with open(firebase_cred_path, "r", encoding="utf-8") as jf:
                 json.load(jf)
         except Exception as e:
             print(f"Firebase credential file is present but invalid JSON: {e}")
-            raise
-
-        cred = credentials.Certificate(firebase_cred_path)
-        cred_source = firebase_cred_path
+        else:
+            cred = credentials.Certificate(firebase_cred_path)
+            cred_source = firebase_cred_path
 
     if cred is not None:
         try:
@@ -115,8 +128,8 @@ try:
             bucket = None
     else:
         print(
-            "Firebase credentials not found. Set FIREBASE_SERVICE_ACCOUNT_PATH, "
-            "FIREBASE_SERVICE_ACCOUNT_JSON, or split FIREBASE_* env vars to enable Firestore."
+            "Firebase credentials not found. Set split FIREBASE_* env vars, "
+            "FIREBASE_SERVICE_ACCOUNT_JSON, or FIREBASE_SERVICE_ACCOUNT_PATH to enable Firestore."
         )
         bucket = None
 except Exception:
