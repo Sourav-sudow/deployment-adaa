@@ -82,8 +82,8 @@ export default function ProfilePage() {
   }, [name]);
 
   useEffect(() => {
-    if (!session?.isAuthenticated || !email) {
-      navigate("/login", { replace: true });
+    if (!email) {
+      setLoading(false);
       return;
     }
 

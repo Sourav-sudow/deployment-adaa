@@ -381,7 +381,7 @@ const LearningPage = () => {
       ref: referral,
       university: campusSelection.universityId || "",
     });
-    return `${window.location.origin}/signup?${params.toString()}`;
+    return `${window.location.origin}/?${params.toString()}`;
   }, [campusSelection.referralCode, campusSelection.universityId]);
   const currentTopicPracticeDone = completedPracticeTopics.includes(
     displayTitle.toLowerCase()
@@ -533,15 +533,7 @@ const LearningPage = () => {
 
   useEffect(() => {
     const session = getCachedSession();
-    if (!session?.isAuthenticated) {
-      navigate("/login", { replace: true });
-      return;
-    }
-    if (!session.isOnboarded) {
-      navigate("/onboarding", { replace: true });
-      return;
-    }
-    if (session.role === "faculty") {
+    if (session?.role === "faculty") {
       navigate("/faculty", { replace: true });
     }
   }, [navigate]);
@@ -631,7 +623,7 @@ const LearningPage = () => {
   const handleLogout = () => {
     setProfileOpen(false);
     clearCachedSession();
-    navigate("/login", { replace: true });
+    navigate("/", { replace: true });
   };
 
   function animatedNextSlide() {

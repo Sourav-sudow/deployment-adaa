@@ -50,8 +50,7 @@ const UserMenu: React.FC<UserMenuProps> = ({ onLogout }) => {
     localStorage.removeItem("selectedYear");
     localStorage.removeItem("selectedSubject");
     localStorage.removeItem("selectedTopic");
-    // Navigate to login page
-    navigate("/login");
+    navigate("/");
     // Call parent logout if provided
     onLogout?.();
   };

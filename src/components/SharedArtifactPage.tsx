@@ -49,18 +49,12 @@ export default function SharedArtifactPage() {
   const openRoute = artifact
     ? `/learning?topic=${encodeURIComponent(artifact.topicTitle)}`
     : "/learning";
-  const signupRoute = artifact
-    ? `/signup?university=${encodeURIComponent(artifact.universityId)}${
-        artifact.referralCode ? `&ref=${encodeURIComponent(artifact.referralCode)}` : ""
-      }`
-    : "/signup";
-
   const primaryAction = () => {
     if (session?.isAuthenticated && session.isOnboarded && session.role === "student") {
       navigate(openRoute);
       return;
     }
-    navigate(signupRoute);
+    navigate(openRoute);
   };
 
   return (

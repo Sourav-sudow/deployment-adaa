@@ -2,17 +2,9 @@ import React, { StrictMode, Suspense, lazy } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import "./App.css";
-import LoginPage from "./components/LoginPage.tsx";
-import AuthChoicePage from "./components/AuthChoicePage.tsx";
-import {
-  getCachedSession,
-  getDefaultRouteForSession,
-  getPendingSignupRole,
-} from "./services/appSession.ts";
 
 const LearningPage = lazy(() => import("./components/LearningPage.tsx"));
 const ProfilePage = lazy(() => import("./components/ProfilePage.tsx"));
-const OnboardingPage = lazy(() => import("./components/OnboardingPage.tsx"));
 const FacultyDashboardPage = lazy(() => import("./components/FacultyDashboardPage.tsx"));
 const SharedArtifactPage = lazy(() => import("./components/SharedArtifactPage.tsx"));
 const ExamWeekPage = lazy(() => import("./components/ExamWeekPage.tsx"));
@@ -23,58 +15,6 @@ function LearningFallback() {
       <p className="text-lg">Loading learning space…</p>
     </div>
   );
-}
-
-function HomeRoute() {
-  const session = getCachedSession();
-  if (session?.isAuthenticated) {
-    return <Navigate to={getDefaultRouteForSession(session)} replace />;
-  }
-
-  return <AuthChoicePage />;
-}
-
-function ProtectedRoute({
-  children,
-  allowRole,
-}: {
-  children: React.ReactNode;
-  allowRole?: "student" | "faculty";
-}) {
-  const session = getCachedSession();
-
-  if (!session?.isAuthenticated) {
-    return <Navigate to="/login" replace />;
-  }
-
-  if (!session.isOnboarded) {
-    return <Navigate to="/onboarding" replace />;
-  }
-
-  if (allowRole && session.role !== allowRole) {
-    return <Navigate to={getDefaultRouteForSession(session)} replace />;
-  }
-
-  return <>{children}</>;
-}
-
-function OnboardingRoute() {
-  const session = getCachedSession();
-  const pendingRole = getPendingSignupRole();
-
-  if (!session?.isAuthenticated) {
-    return <Navigate to="/login" replace />;
-  }
-
-  if (session.isOnboarded) {
-    return <Navigate to={getDefaultRouteForSession(session)} replace />;
-  }
-
-  if (!session.role && !pendingRole) {
-    return <Navigate to="/signup" replace />;
-  }
-
-  return <OnboardingPage />;
 }
 
 class RootErrorBoundary extends React.Component<
@@ -117,43 +57,15 @@ createRoot(document.getElementById("root")!).render(
       <BrowserRouter>
         <Suspense fallback={<LearningFallback />}>
           <Routes>
-            <Route path="/" element={<HomeRoute />} />
-            <Route path="/login" element={<LoginPage mode="login" />} />
-            <Route path="/signup" element={<LoginPage mode="signup" />} />
+            <Route path="/" element={<LearningPage />} />
+            <Route path="/login" element={<Navigate to="/" replace />} />
+            <Route path="/signup" element={<Navigate to="/" replace />} />
             <Route path="/share/:shareId" element={<SharedArtifactPage />} />
-            <Route path="/onboarding" element={<OnboardingRoute />} />
-            <Route
-              path="/learning"
-              element={
-                <ProtectedRoute allowRole="student">
-                  <LearningPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/exam-week"
-              element={
-                <ProtectedRoute allowRole="student">
-                  <ExamWeekPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/faculty"
-              element={
-                <ProtectedRoute allowRole="faculty">
-                  <FacultyDashboardPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/profile"
-              element={
-                <ProtectedRoute>
-                  <ProfilePage />
-                </ProtectedRoute>
-              }
-            />
+            <Route path="/onboarding" element={<Navigate to="/" replace />} />
+            <Route path="/learning" element={<LearningPage />} />
+            <Route path="/exam-week" element={<ExamWeekPage />} />
+            <Route path="/faculty" element={<FacultyDashboardPage />} />
+            <Route path="/profile" element={<ProfilePage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>
