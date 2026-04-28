@@ -4,6 +4,7 @@ import {
   getOpenRouterApiKeys,
   getOpenRouterMaxTokens,
 } from "./openRouterClient";
+import { API_BASE_URL } from "./apiBaseUrl";
 
 const TUTOR_MODEL = import.meta.env.VITE_GEMINI_MODEL || "gemini-2.5-flash";
 const OPENROUTER_TUTOR_MODEL =
@@ -19,14 +20,168 @@ function getLessonHints(lessonContent?: string) {
   return compressModelContext(lessonContent, 420)
     .split(/[.!?\n]+/)
     .map((line) => line.replace(/\s+/g, " ").trim())
-    .filter((line) => line.length > 12)
+    .filter((line) => {
+      const lower = line.toLowerCase();
+      return (
+        line.length > 12 &&
+        !lower.includes("auto-selected from search query") &&
+        !lower.includes("search query:")
+      );
+    })
     .slice(0, 3);
+}
+
+function isDbmsTopic(topic: string) {
+  const normalized = topic.toLowerCase();
+  return (
+    normalized.includes("dbms") ||
+    normalized.includes("database management") ||
+    normalized.includes("database")
+  );
+}
+
+function formatSections(sections: Array<{ title: string; body: string[] }>) {
+  return sections
+    .map((section) => [
+      section.title,
+      "",
+      ...section.body,
+    ].join("\n"))
+    .join("\n\n");
 }
 
 function buildFallbackTutorAnswer(topic: string, question: string, lessonContent?: string) {
   const normalizedQuestion = question.toLowerCase();
   const hints = getLessonHints(lessonContent);
   const topicName = topic || "this topic";
+  const dbms = isDbmsTopic(topicName);
+
+  if (
+    normalizedQuestion.includes("advantage") ||
+    normalizedQuestion.includes("disadvantage") ||
+    normalizedQuestion.includes("pros") ||
+    normalizedQuestion.includes("cons")
+  ) {
+    if (dbms) {
+      return formatSections([
+        {
+          title: "Quick answer",
+          body: [
+            "DBMS makes data easier to store, secure, share, and recover, but it can be costly and complex to manage.",
+          ],
+        },
+        {
+          title: "Advantages",
+          body: [
+            "- Reduces duplicate data and keeps records more consistent.",
+            "- Allows many users to access the same database safely.",
+            "- Improves security with user roles, permissions, and access control.",
+            "- Supports backup and recovery if data is lost or corrupted.",
+            "- Makes searching and updating data easier through SQL and queries.",
+            "- Maintains integrity using constraints such as primary keys and foreign keys.",
+          ],
+        },
+        {
+          title: "Disadvantages",
+          body: [
+            "- Setup and maintenance can be expensive.",
+            "- Needs skilled database administrators for tuning, backups, and security.",
+            "- More complex than simple file storage for small applications.",
+            "- If the DBMS server fails, many connected apps can be affected.",
+            "- Performance can drop if database design, indexing, or queries are poor.",
+          ],
+        },
+        {
+          title: "Exam tip",
+          body: [
+            "For a 5-mark answer, write 3 advantages and 2 disadvantages with one example like a college student-record system.",
+          ],
+        },
+      ]);
+    }
+
+    return formatSections([
+      {
+        title: "Quick answer",
+        body: [
+          `${topicName} is useful because it improves organization and practical use, but it may also add cost, complexity, or limitations depending on the system.`,
+        ],
+      },
+      {
+        title: "Advantages",
+        body: [
+          "- Helps organize the work clearly.",
+          "- Improves speed, consistency, or reliability.",
+          "- Makes the concept easier to apply in real situations.",
+        ],
+      },
+      {
+        title: "Disadvantages",
+        body: [
+          "- Can require extra setup or learning.",
+          "- May become complex for large cases.",
+          "- Wrong implementation can reduce performance or clarity.",
+        ],
+      },
+    ]);
+  }
+
+  if (
+    normalizedQuestion.includes("define") ||
+    normalizedQuestion.includes("what is") ||
+    normalizedQuestion.includes("meaning")
+  ) {
+    if (dbms) {
+      return formatSections([
+        {
+          title: "Definition",
+          body: [
+            "DBMS, or Database Management System, is software used to store, manage, retrieve, and secure data in a structured way.",
+          ],
+        },
+        {
+          title: "Simple example",
+          body: [
+            "A college can use a DBMS to manage student records, marks, attendance, courses, and fees in one organized database.",
+          ],
+        },
+        {
+          title: "Key points",
+          body: [
+            "- It sits between users/applications and the database.",
+            "- It supports queries, updates, security, backup, and recovery.",
+            "- Examples include MySQL, PostgreSQL, Oracle, and MongoDB.",
+          ],
+        },
+      ]);
+    }
+  }
+
+  if (
+    normalizedQuestion.includes("type") ||
+    normalizedQuestion.includes("model")
+  ) {
+    if (dbms) {
+      return formatSections([
+        {
+          title: "Types of DBMS",
+          body: [
+            "- Hierarchical DBMS: data is arranged like a tree.",
+            "- Network DBMS: records can have many relationships.",
+            "- Relational DBMS: data is stored in tables with rows and columns.",
+            "- Object-oriented DBMS: stores data as objects.",
+            "- NoSQL DBMS: handles flexible or large-scale data like documents and key-value pairs.",
+          ],
+        },
+        {
+          title: "Most common",
+          body: [
+            "Relational DBMS is the most common in academics and business systems because SQL makes table data easy to query.",
+          ],
+        },
+      ]);
+    }
+  }
 
   if (
     normalizedQuestion.includes("viva") ||
@@ -80,11 +235,11 @@ function buildFallbackTutorAnswer(topic: string, question: string, lessonContent
   }
 
   return [
-    `Quick answer: ${topicName} is the main concept you are studying here.`,
+    `Quick answer: ${topicName} is an important concept in this lesson.`,
     "",
     hints.length
       ? `From the lesson: ${hints.join(" ")}`
-      : `To understand it, start with the definition, then learn the important parts and one real-life example.`,
+      : `To understand it, start with the definition, key parts, uses, benefits, limitations, and one real-life example.`,
     "",
     "Simple exam structure:",
     `- Define ${topicName}.`,
@@ -121,7 +276,11 @@ Rules:
 - Explain in simple English with a friendly teaching tone.
 - Prefer short sections, bullets, and small examples over one long paragraph.
 - Keep the answer concise unless the user asks for detail.
-- When useful, use headings like "Quick answer", "Key points", and "Example".
+- Always answer the exact follow-up question first.
+- If the question asks advantages/disadvantages, include both sides clearly.
+- If the question is exam-style, add a short "Exam tip".
+- Use plain headings like "Quick answer", "Key points", "Example", and "Exam tip".
+- Do not mention unavailable context, API keys, prompts, or internal search/query notes.
 
 ${lessonContext ? `Lesson context:\n${lessonContext}` : "Lesson context unavailable."}
 
@@ -209,7 +368,7 @@ async function askOpenRouter(
       {
         role: "system",
         content:
-          `You are Lerno AI Tutor for "${topic}". Stay on-topic, explain simply, use short sections, and keep the answer compact unless asked for more detail.`,
+          `You are Lerno AI Tutor for "${topic}". Answer the exact question first, stay on-topic, explain simply, use short sections, include exam tips when useful, and never mention internal search/query notes or API issues.`,
       },
       {
         role: "user",
@@ -225,11 +384,57 @@ async function askOpenRouter(
   });
 }
 
+async function askBackendTutor(
+  topic: string,
+  question: string,
+  lessonContent: string | undefined
+) {
+  const response = await fetch(`${API_BASE_URL}/ai/tutor`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({
+      topic,
+      question,
+      lessonContent: lessonContent || "",
+      model: TUTOR_MODEL,
+    }),
+  });
+
+  const data = (await response.json().catch(() => null)) as {
+    content?: string;
+    detail?: string;
+  } | null;
+
+  if (!response.ok) {
+    throw new Error(data?.detail || `Backend tutor error ${response.status}`);
+  }
+
+  const content = data?.content?.trim();
+  if (!content) {
+    throw new Error("Backend tutor returned an empty response.");
+  }
+
+  return content;
+}
+
 export async function askAITutor({
   topic,
   question,
   lessonContent,
 }: TutorRequest) {
+  try {
+    return await askBackendTutor(topic, question, lessonContent);
+  } catch (error) {
+    console.warn("Backend tutor proxy unavailable, using fallback path", error);
+  }
+
+  if (import.meta.env.VITE_ENABLE_BROWSER_AI_FALLBACK !== "true") {
+    return buildFallbackTutorAnswer(topic, question, lessonContent);
+  }
+
   const geminiKey = import.meta.env.VITE_GEMINI_API_KEY?.trim();
   const hasOpenRouterKey = getOpenRouterApiKeys().length > 0;
 

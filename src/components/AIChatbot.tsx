@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { askAITutor } from "../services/openRouterTutor";
 
 type Message = { type: "user" | "bot"; text: string };
+const RECENT_TUTOR_QUESTIONS_KEY = "lernoTutorRecentQuestions";
 
 type AIChatbotProps = {
   lessonTitle?: string;
@@ -12,9 +13,79 @@ type AIChatbotProps = {
 };
 
 function buildIntroMessage(topic: string) {
+  if (topic === "any topic") {
+    return `Hi there! I'm your AI tutor.
+
+Ask me about any topic, or pick a suggestion above to start with video, notes, and exam prep.`;
+  }
+
   return `Hi there! I'm your AI tutor for ${topic}.
 
 Ask me to explain the topic simply, give short notes, create viva questions, or summarize the lesson.`;
+}
+
+function cleanMarkdownLine(line: string) {
+  return line
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/__(.*?)__/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .trim();
+}
+
+function MessageText({ text }: { text: string }) {
+  const lines = text.split(/\n+/).map((line) => line.trim()).filter(Boolean);
+
+  if (!lines.length) return null;
+
+  return (
+    <div className="space-y-2 text-sm leading-6">
+      {lines.map((line, index) => {
+        const heading = line.match(/^#{1,4}\s+(.+)$/);
+        if (heading) {
+          return (
+            <p key={`${line}-${index}`} className="pt-1 text-[13px] font-semibold text-current">
+              {cleanMarkdownLine(heading[1])}
+            </p>
+          );
+        }
+
+        const numbered = line.match(/^(\d+)[.)]\s+(.+)$/);
+        if (numbered) {
+          return (
+            <div key={`${line}-${index}`} className="flex gap-2">
+              <span className="mt-0.5 shrink-0 text-[11px] font-semibold opacity-70">
+                {numbered[1]}.
+              </span>
+              <p>{cleanMarkdownLine(numbered[2])}</p>
+            </div>
+          );
+        }
+
+        const bullet = line.match(/^[-*•]\s+(.+)$/);
+        if (bullet) {
+          return (
+            <div key={`${line}-${index}`} className="flex gap-2">
+              <span className="mt-[0.45rem] h-1.5 w-1.5 shrink-0 rounded-full bg-current opacity-55" />
+              <p>{cleanMarkdownLine(bullet[1])}</p>
+            </div>
+          );
+        }
+
+        return <p key={`${line}-${index}`}>{cleanMarkdownLine(line)}</p>;
+      })}
+    </div>
+  );
+}
+
+function readRecentQuestions() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(RECENT_TUTOR_QUESTIONS_KEY) || "[]");
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === "string").slice(0, 5)
+      : [];
+  } catch {
+    return [];
+  }
 }
 
 const AIChatbot = ({
@@ -25,29 +96,39 @@ const AIChatbot = ({
 }: AIChatbotProps) => {
   const isDarkTheme = theme === "dark";
   const currentTopic =
-    lessonTitle || localStorage.getItem("selectedTopicTitle") || "this lesson";
+    lessonTitle || localStorage.getItem("selectedTopicTitle") || "any topic";
+  const hasLessonTopic = currentTopic !== "any topic";
   const [messages, setMessages] = useState<Message[]>([
     { type: "bot", text: buildIntroMessage(currentTopic) },
   ]);
   const [inputText, setInputText] = useState("");
   const [isTyping, setIsTyping] = useState(false);
+  const [recentQuestions, setRecentQuestions] = useState<string[]>(readRecentQuestions);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const quickActions = [
     {
       label: "Explain Simply",
-      prompt: `Explain ${currentTopic} in very simple words with a real-life example.`,
+      prompt: hasLessonTopic
+        ? `Explain ${currentTopic} in very simple words with a real-life example.`
+        : "Explain DBMS in very simple words with a real-life example.",
     },
     {
       label: "Key Points",
-      prompt: `Give me the key points for ${currentTopic} in short bullet points.`,
+      prompt: hasLessonTopic
+        ? `Give me the key points for ${currentTopic} in short bullet points.`
+        : "Give me key points for SQL joins in short bullet points.",
     },
     {
       label: "Short Notes",
-      prompt: `Make quick revision notes for ${currentTopic}.`,
+      prompt: hasLessonTopic
+        ? `Make quick revision notes for ${currentTopic}.`
+        : "Make quick revision notes for computer networks.",
     },
     {
       label: "Viva Prep",
-      prompt: `Ask me 3 viva questions about ${currentTopic} with short answers.`,
+      prompt: hasLessonTopic
+        ? `Ask me 3 viva questions about ${currentTopic} with short answers.`
+        : "Ask me 3 viva questions about operating systems with short answers.",
     },
   ];
 
@@ -69,6 +150,14 @@ const AIChatbot = ({
     setMessages((prev) => [...prev, userMessage]);
     setInputText("");
     setIsTyping(true);
+    setRecentQuestions((prev) => {
+      const next = [
+        trimmedQuestion,
+        ...prev.filter((item) => item.toLowerCase() !== trimmedQuestion.toLowerCase()),
+      ].slice(0, 5);
+      localStorage.setItem(RECENT_TUTOR_QUESTIONS_KEY, JSON.stringify(next));
+      return next;
+    });
 
     try {
       const responseText = await askAITutor({
@@ -103,12 +192,12 @@ const AIChatbot = ({
     <div
       className={`relative group overflow-hidden rounded-xl border backdrop-blur-sm transition-all duration-300 h-[520px] min-h-[520px] max-h-[520px] flex flex-col ${
         isDarkTheme
-          ? "border-white/10 bg-zinc-900/50 hover:border-white/30 hover:bg-zinc-900/70"
+          ? "border-white/10 bg-zinc-900/58 hover:border-white/25 hover:bg-zinc-900/72"
           : "border-slate-300/70 bg-white/88 shadow-[0_24px_80px_-40px_rgba(148,163,184,0.45)] hover:border-slate-400/80 hover:bg-white"
       }`}
     >
       {/* Gradient background effect */}
-      <div className="absolute inset-0 bg-gradient-to-br from-violet-500/20 via-fuchsia-500/20 to-blue-500/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+      <div className="absolute inset-0 bg-gradient-to-br from-violet-500/10 via-transparent to-blue-500/10 opacity-60 group-hover:opacity-100 transition-opacity duration-500"></div>
       <div className="absolute inset-0 bg-grid-white/[0.02] bg-[size:20px_20px]"></div>
 
       {/* Chat interface */}
@@ -159,6 +248,31 @@ const AIChatbot = ({
           </div>
         </div>
 
+        {recentQuestions.length ? (
+          <div className="mb-3">
+            <p className={`text-xs uppercase tracking-[0.24em] mb-2 ${isDarkTheme ? "text-white/35" : "text-slate-500"}`}>
+              Last Asked
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {recentQuestions.slice(0, 3).map((question) => (
+                <button
+                  key={question}
+                  type="button"
+                  onClick={() => void sendMessage(question)}
+                  disabled={isTyping}
+                  className={`max-w-full truncate rounded-full border px-3 py-1.5 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                    isDarkTheme
+                      ? "border-white/10 bg-black/20 text-white/65 hover:bg-white/10 hover:text-white"
+                      : "border-slate-300 bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                  }`}
+                >
+                  {question}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
         {/* Messages container - flex-grow to take up available space */}
         <div className="flex-grow overflow-y-auto pr-2 mb-3 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
           {messages.map((msg, index) => (
@@ -182,8 +296,8 @@ const AIChatbot = ({
                       : "bg-slate-100 text-slate-700"
                 }`}
               >
-                <div className="whitespace-pre-wrap break-words text-sm leading-7">
-                  {msg.text}
+                <div className="break-words">
+                  <MessageText text={msg.text} />
                 </div>
               </div>
             </motion.div>

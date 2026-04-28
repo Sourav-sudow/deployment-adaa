@@ -1,3 +1,5 @@
+import { API_BASE_URL } from "./apiBaseUrl";
+
 type OpenRouterMessage = {
   role: "system" | "user" | "assistant";
   content: string;
@@ -16,6 +18,11 @@ type OpenRouterChatRequest = {
 type OpenRouterChatResponse = {
   choices?: Array<{ message?: { content?: string } }>;
   error?: { message?: string };
+};
+
+type BackendChatResponse = {
+  content?: string;
+  detail?: string;
 };
 
 class OpenRouterError extends Error {
@@ -212,7 +219,52 @@ async function callOpenRouterWithKey(
   }
 }
 
+async function callBackendChatCompletion(request: OpenRouterChatRequest) {
+  const response = await fetch(`${API_BASE_URL}/ai/chat-completion`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify(request),
+  });
+
+  let data: BackendChatResponse | null = null;
+  try {
+    data = (await response.json()) as BackendChatResponse;
+  } catch {
+    data = null;
+  }
+
+  if (!response.ok) {
+    throw new OpenRouterError(data?.detail || `Backend AI error ${response.status}`, {
+      status: response.status,
+      retriable: response.status === 404 || response.status >= 500,
+    });
+  }
+
+  const text = data?.content?.trim();
+  if (!text) {
+    throw new OpenRouterError("Backend AI returned an empty response.", {
+      status: response.status,
+      retriable: false,
+    });
+  }
+
+  return text;
+}
+
 export async function createOpenRouterChatCompletion(request: OpenRouterChatRequest) {
+  try {
+    return await callBackendChatCompletion(request);
+  } catch (error) {
+    console.warn("Backend AI proxy unavailable", error);
+  }
+
+  if (import.meta.env.VITE_ENABLE_BROWSER_AI_FALLBACK !== "true") {
+    throw new Error("Backend AI proxy is unavailable. Start the backend or configure backend AI env vars.");
+  }
+
   const keys = getOpenRouterApiKeys();
   if (!keys.length) {
     throw new Error(

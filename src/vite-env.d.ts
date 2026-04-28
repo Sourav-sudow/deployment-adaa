@@ -15,6 +15,7 @@ interface ImportMetaEnv {
   readonly VITE_OPENROUTER_TUTOR_MAX_TOKENS?: string;
   readonly VITE_OPENROUTER_EXAM_MAX_TOKENS?: string;
   readonly VITE_OPENROUTER_QUIZ_MAX_TOKENS?: string;
+  readonly VITE_ENABLE_BROWSER_AI_FALLBACK?: string;
 }
 
 interface ImportMeta {

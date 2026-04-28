@@ -566,8 +566,8 @@ export function clearPendingSignupRole() {
 }
 
 export function getDefaultRouteForSession(session: AppSession | null) {
-  if (!session?.isAuthenticated) return "/login";
-  if (!session.isOnboarded) return "/onboarding";
+  if (!session?.isAuthenticated) return "/learning";
+  if (!session.isOnboarded) return "/learning";
   if (session.role === "faculty") return "/faculty";
   return "/learning";
 }

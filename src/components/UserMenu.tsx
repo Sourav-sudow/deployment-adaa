@@ -1,12 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
 
 interface UserMenuProps {
   onLogout?: () => void;
 }
 
 const UserMenu: React.FC<UserMenuProps> = ({ onLogout }) => {
-  const navigate = useNavigate();
   const menuRef = useRef<HTMLDivElement>(null);
   const [isOpen, setIsOpen] = useState(false);
 
@@ -33,11 +31,6 @@ const UserMenu: React.FC<UserMenuProps> = ({ onLogout }) => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const handleSettings = () => {
-    setIsOpen(false);
-    navigate("/settings");
-  };
-
   const handleLogout = () => {
     setIsOpen(false);
     // Clear all user data
@@ -50,8 +43,6 @@ const UserMenu: React.FC<UserMenuProps> = ({ onLogout }) => {
     localStorage.removeItem("selectedYear");
     localStorage.removeItem("selectedSubject");
     localStorage.removeItem("selectedTopic");
-    navigate("/");
-    // Call parent logout if provided
     onLogout?.();
   };
 
@@ -74,15 +65,6 @@ const UserMenu: React.FC<UserMenuProps> = ({ onLogout }) => {
       {isOpen && (
         <div className="absolute right-0 top-14 w-48 bg-gray-900/90 backdrop-blur-xl border border-gray-700/60 rounded-2xl shadow-2xl overflow-hidden z-20">
           <div className="flex flex-col">
-            <button
-              onClick={handleSettings}
-              className="flex items-center gap-2 px-4 py-3 text-gray-200 hover:bg-gray-800 text-sm transition"
-            >
-              <span role="img" aria-hidden="true">
-                ⚙️
-              </span>
-              <span>Settings</span>
-            </button>
             <button
               onClick={handleLogout}
               className="flex items-center gap-2 px-4 py-3 text-red-300 hover:bg-red-900/40 text-sm transition"

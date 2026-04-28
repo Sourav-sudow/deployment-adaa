@@ -76,11 +76,16 @@ function scoreVideoTitle(title: string, topic: string): number {
   return score;
 }
 
-async function searchYoutubeVideo(input: { query: string; topic: string }): Promise<string | null> {
+async function searchYoutubeVideo(input: {
+  query: string;
+  topic: string;
+  language?: "english" | "hindi";
+  length?: "short" | "long";
+}): Promise<string | null> {
   const apiKey = import.meta.env.VITE_YOUTUBE_API_KEY;
   if (!apiKey) return null;
 
-  const cacheKey = `${VIDEO_CACHE_PREFIX}${input.topic.toLowerCase().trim()}`;
+  const cacheKey = `${VIDEO_CACHE_PREFIX}${input.topic.toLowerCase().trim()}::${input.language || "english"}::${input.length || "long"}`;
   const cachedUrl = localStorage.getItem(cacheKey);
   if (cachedUrl) return cachedUrl;
 
@@ -167,6 +172,8 @@ async function searchYoutubeVideo(input: { query: string; topic: string }): Prom
           const meta = statsMap[videoId];
           if (!meta) return false;
           if (meta.durationSec > 0 && meta.durationSec < 180) return false; // Shorts-like videos
+          if (input.length === "short" && meta.durationSec > 0 && meta.durationSec > 900) return false;
+          if (input.length === "long" && meta.durationSec > 0 && meta.durationSec < 420) return false;
           const loweredTitle = meta.title.toLowerCase();
           if (loweredTitle.includes("shorts") || loweredTitle.includes("#shorts")) return false;
           return true;
@@ -175,6 +182,9 @@ async function searchYoutubeVideo(input: { query: string; topic: string }): Prom
           videoId,
           score:
             scoreVideoTitle(statsMap[videoId]?.title || "", input.topic) * 1000000 +
+            (input.language === "hindi" && /hindi|हिंदी|हिन्दी/i.test(statsMap[videoId]?.title || "") ? 90000000 : 0) +
+            (input.length === "short" && statsMap[videoId]?.durationSec <= 900 ? 40000000 : 0) +
+            (input.length === "long" && statsMap[videoId]?.durationSec >= 900 ? 30000000 : 0) +
             (statsMap[videoId]?.viewCount || 0) +
             (statsMap[videoId]?.likeCount || 0) * 10,
         }))
@@ -223,6 +233,8 @@ export async function resolveTopicVideo(input: {
   universityId?: string;
   subjectTitle?: string;
   unitTitle?: string;
+  language?: "english" | "hindi";
+  length?: "short" | "long";
 }): Promise<string | null> {
   let override: Awaited<ReturnType<typeof fetchTopicVideoOverride>> = null;
   try {
@@ -243,16 +255,20 @@ export async function resolveTopicVideo(input: {
   const mappedUrl = getMappedVideoUrl(input.title);
   if (mappedUrl) return mappedUrl;
 
+  const languageHint = input.language === "hindi" ? " in hindi" : "";
+  const lengthHint = input.length === "short" ? " short explanation" : " full explanation";
   const searchTerms = [
-    `what is ${input.title}`,
-    `${input.title} tutorial`,
-    `${input.title} explained`,
+    `what is ${input.title}${languageHint}`,
+    `${input.title} tutorial${languageHint}`,
+    `${input.title} explained${languageHint}${lengthHint}`,
   ];
 
   for (const query of searchTerms) {
     const result = await searchYoutubeVideo({
       query: query.trim(),
       topic: input.title,
+      language: input.language,
+      length: input.length,
     });
     if (result) return result;
   }

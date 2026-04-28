@@ -2,14 +2,11 @@
 // ParticleText import removed
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import AIChatbot from "./AIChatbot";
-import { HoverBorderGradient } from "@/ui/hover-border-gradient";
-import { AnimatedShinyText } from "@/ui/animated-shiny-text";
-import { cn } from "@/lib/utils";
 import { useLocation, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { generateExamQuestions, GeneratedExamQuestions } from "../services/openRouterExamQuestions";
 import { resolveTopicVideo } from "../services/youtubeVideos";
-import { askAITutor } from "../services/openRouterTutor";
+import { generateQuickNotes, fallbackQuickNotes, type QuickNoteSection } from "../services/quickNotes";
 import {
   clearCachedSession,
   fetchSession,
@@ -22,7 +19,6 @@ import {
 import { fetchCampusContentPack, getCoursesDataForSelection } from "../services/campusContent";
 import { trackEvent } from "../services/activityTracker";
 import { buildCoursesDataFromContentPack } from "../services/campusData";
-import { fetchCampusGrowth, type CampusGrowthData } from "../services/campusGrowth";
 import { createShareArtifact } from "../services/shareArtifacts";
 
 const RECENT_TOPICS_STORAGE_KEY = "lernoRecentTopics";
@@ -30,7 +26,18 @@ const BOOKMARKED_TOPICS_STORAGE_KEY = "lernoBookmarkedTopics";
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "lernoSidebarCollapsed";
 const THEME_STORAGE_KEY = "lernoTheme";
 const COMPLETED_PRACTICE_STORAGE_KEY = "lernoCompletedPracticeTopics";
+const DEMO_TOPIC_PRELOADED_STORAGE_KEY = "lernoDemoTopicPreloaded";
+const VIDEO_CACHE_PREFIX = "lernoResolvedVideo::v2::";
 const MAX_RECENT_TOPICS = 8;
+const FOCUS_DURATION_SECONDS = 25 * 60;
+const DEMO_TOPIC_TITLE = "DBMS";
+const SUGGESTED_TOPIC_TITLES = [
+  "DBMS",
+  "SQL Joins",
+  "Computer Networks",
+  "Operating System",
+  "DSA",
+];
 
 type TopicItem = {
   title: string;
@@ -120,54 +127,52 @@ function formatTopicTime(timestamp: number) {
   }).format(timestamp);
 }
 
-function toSentenceCase(value: string) {
-  if (!value) return value;
-  return value.charAt(0).toUpperCase() + value.slice(1);
+function formatFocusTime(seconds: number) {
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(remainingSeconds).padStart(2, "0")}`;
 }
 
-function buildQuickNotes(input: {
-  title: string;
-  narration: string;
-  unitTitle: string;
-}) {
-  const cleanNarration = input.narration
-    .replace(/\s+/g, " ")
-    .replace(/\band\b/gi, ",")
-    .trim();
-
-  const derivedNotes = cleanNarration
-    .split(/[.,;]+/)
-    .map((part) => part.trim())
-    .filter((part) => part.length > 10)
-    .slice(0, 4)
-    .map((part) => toSentenceCase(part));
-
-  if (derivedNotes.length) {
-    return derivedNotes;
-  }
-
-  if (!input.title) {
-    return [
-      "Pick a topic to get short revision notes here.",
-      "You will see the core ideas, important terms, and what to focus on first.",
-    ];
-  }
-
-  return [
-    `Revise the core idea behind ${input.title}.`,
-    input.unitTitle
-      ? `Connect this topic with ${input.unitTitle}.`
-      : `Understand where this topic fits in your syllabus.`,
-    `Focus on the important terms, examples, and exam-friendly explanation.`,
-  ];
+function isToday(timestamp: number) {
+  const date = new Date(timestamp);
+  const now = new Date();
+  return (
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate()
+  );
 }
 
-function parseQuickNotesFromAI(text: string) {
-  return text
-    .split(/\n+/)
-    .map((line) => line.replace(/^[-*\d.)\s]+/, "").trim())
-    .filter((line) => line.length > 8)
-    .slice(0, 4);
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function getRelatedTopicTitles(topic: string, unitTopics: string[], subjectTopics: string[]) {
+  const normalized = topic.toLowerCase();
+  if (normalized.includes("network")) {
+    return ["OSI Model", "TCP/IP", "LAN vs WAN", "Network Devices", "IP Addressing"];
+  }
+  if (normalized.includes("dbms") || normalized.includes("database")) {
+    return ["SQL", "Normalization", "ER Model", "Transactions", "Indexing"];
+  }
+  if (normalized.includes("sql")) {
+    return ["SQL Joins", "Group By", "Subqueries", "Keys", "Views"];
+  }
+  if (normalized.includes("operating") || normalized.includes("os")) {
+    return ["Process Scheduling", "Deadlock", "Memory Management", "Paging", "File System"];
+  }
+  if (normalized.includes("dsa") || normalized.includes("data structure")) {
+    return ["Arrays", "Linked List", "Stack", "Queue", "Trees"];
+  }
+
+  return [...unitTopics, ...subjectTopics, ...SUGGESTED_TOPIC_TITLES]
+    .filter((title) => title && title.toLowerCase() !== normalized)
+    .slice(0, 5);
 }
 
 const LearningPage = () => {
@@ -184,12 +189,13 @@ const LearningPage = () => {
   const viewedLessonKeysRef = useRef<Set<string>>(new Set());
   const sharedTopicHandledRef = useRef("");
   const examWeekLaunchTimerRef = useRef<number | null>(null);
+  const demoTopicPreloadedRef = useRef(false);
 
   const profileRef = useRef<HTMLDivElement | null>(null);
   const searchRef = useRef<HTMLDivElement | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileName, setProfileName] = useState(
-    cachedSession?.profile?.fullName || localStorage.getItem("profileName") || "Sourav Kumar"
+    cachedSession?.profile?.fullName || localStorage.getItem("profileName") || "Guest Learner"
   );
   const [profileAvatar, setProfileAvatar] = useState(
     cachedSession?.profile?.avatar ||
@@ -234,7 +240,6 @@ const LearningPage = () => {
   const [contentPack, setContentPack] = useState(() =>
     getCoursesDataForSelection(campusSelection)
   );
-  const [growth, setGrowth] = useState<CampusGrowthData | null>(null);
   const [completedPracticeTopics, setCompletedPracticeTopics] = useState<string[]>(() => {
     try {
       const raw = localStorage.getItem(COMPLETED_PRACTICE_STORAGE_KEY);
@@ -304,35 +309,19 @@ const LearningPage = () => {
     });
     return list;
   }, [contentPack]);
-  const FetchData = location.state?.responseData || [
-    {
-      title: "Introduction to Vectors",
-      assessment: {
-        multiple_choice: {
-          question: "What is the primary purpose of vectors in computing?",
-          choices: [
-            "A. Data storage only",
-            "B. Mathematical operations and graphics",
-            "C. Text processing",
-            "D. Audio manipulation",
-          ],
-          correctAnswerIndex: 1,
-        },
-      },
-      narration:
-        "Vectors are a fundamental concept in computing, especially in graphics programming and mathematical operations.",
-    },
-  ];
-
-  const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
+  const currentSlideIndex = 0;
 
   // Exam questions state
   const [examQuestions, setExamQuestions] = useState<GeneratedExamQuestions | null>(null);
   const [examQuestionsLoading, setExamQuestionsLoading] = useState(false);
   const [examQuestionsError, setExamQuestionsError] = useState<string | null>(null);
-  const [quickNotesFromApi, setQuickNotesFromApi] = useState<string[]>([]);
+  const [quickNotesFromApi, setQuickNotesFromApi] = useState<QuickNoteSection[]>([]);
   const [quickNotesLoading, setQuickNotesLoading] = useState(false);
   const [examWeekLaunchPending, setExamWeekLaunchPending] = useState(false);
+  const [focusSeconds, setFocusSeconds] = useState(FOCUS_DURATION_SECONDS);
+  const [focusRunning, setFocusRunning] = useState(false);
+  const [videoLanguage, setVideoLanguage] = useState<"english" | "hindi">("english");
+  const [videoLength, setVideoLength] = useState<"short" | "long">("long");
 
   const displayTitle = selectedTopicTitle || "";
   const displayNarration = selectedTopicNarration || "";
@@ -342,16 +331,16 @@ const LearningPage = () => {
   const isCurrentTopicBookmarked = bookmarkedTopics.some(
     (topic) => topic.title.toLowerCase() === displayTitle.toLowerCase()
   );
-  const fallbackQuickNotes = useMemo(
+  const structuredFallbackNotes = useMemo(
     () =>
-      buildQuickNotes({
-        title: displayTitle,
+      fallbackQuickNotes({
+        topic: displayTitle,
         narration: displayNarration,
         unitTitle: selectedUnitTitle,
       }),
     [displayNarration, displayTitle, selectedUnitTitle]
   );
-  const quickNotes = quickNotesFromApi.length ? quickNotesFromApi : fallbackQuickNotes;
+  const quickNotes = quickNotesFromApi.length ? quickNotesFromApi : structuredFallbackNotes;
   const subjectRevisionPack = useMemo(() => {
     if (!syllabusSubjectTitle) return [];
     return allTopics
@@ -374,28 +363,26 @@ const LearningPage = () => {
       ).filter(Boolean),
     [allTopics, displayTitle, subjectRevisionPack]
   );
-  const inviteLink = useMemo(() => {
-    const referral = campusSelection.referralCode || "";
-    if (!referral) return "";
-    const params = new URLSearchParams({
-      ref: referral,
-      university: campusSelection.universityId || "",
-    });
-    return `${window.location.origin}/?${params.toString()}`;
-  }, [campusSelection.referralCode, campusSelection.universityId]);
   const currentTopicPracticeDone = completedPracticeTopics.includes(
     displayTitle.toLowerCase()
   );
-
-  function handleNextSlide() {
-    const totalSlides = Math.min(FetchData.length, 5);
-
-    if (currentSlideIndex < totalSlides - 1) {
-      setCurrentSlideIndex((prevIndex) => prevIndex + 1);
-    } else {
-      setCurrentSlideIndex(0);
-    }
-  }
+  const todayTopicsStudied = useMemo(
+    () => recentTopics.filter((topic) => isToday(topic.lastVisitedAt)).length,
+    [recentTopics]
+  );
+  const progressPercent = Math.min(
+    100,
+    Math.round(((todayTopicsStudied + completedPracticeTopics.length) / 5) * 100)
+  );
+  const relatedTopics = useMemo(
+    () =>
+      getRelatedTopicTitles(
+        displayTitle,
+        selectedUnitTopicsDisplay,
+        subjectRevisionPack.map((topic) => topic.title)
+      ),
+    [displayTitle, selectedUnitTopicsDisplay, subjectRevisionPack]
+  );
 
   const slideVariants = {
     hidden: (direction: number) => ({
@@ -420,7 +407,7 @@ const LearningPage = () => {
     }),
   };
 
-  const [direction, setDirection] = useState(1);
+  const direction = 1;
 
   useEffect(() => {
     const handleClickAway = (event: MouseEvent) => {
@@ -445,7 +432,7 @@ const LearningPage = () => {
 
   useEffect(() => {
     const syncProfile = () => {
-      setProfileName(localStorage.getItem("profileName") || "Sourav Kumar");
+      setProfileName(localStorage.getItem("profileName") || "Guest Learner");
       setProfileAvatar(localStorage.getItem("profileAvatar") || "https://i.pravatar.cc/80?img=64");
       setRecentTopics(readStoredTopics(RECENT_TOPICS_STORAGE_KEY));
       setBookmarkedTopics(readStoredTopics(BOOKMARKED_TOPICS_STORAGE_KEY));
@@ -476,6 +463,23 @@ const LearningPage = () => {
       JSON.stringify(completedPracticeTopics)
     );
   }, [completedPracticeTopics]);
+
+  useEffect(() => {
+    if (!focusRunning) return;
+
+    const timer = window.setInterval(() => {
+      setFocusSeconds((prev) => {
+        if (prev <= 1) {
+          window.clearInterval(timer);
+          setFocusRunning(false);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [focusRunning]);
 
   useEffect(() => {
     if (!sessionEmail || !hydratedSessionRef.current || syncingFromServerRef.current) {
@@ -554,7 +558,7 @@ const LearningPage = () => {
         if (!active) return;
 
         if (session.profile) {
-          setProfileName(session.profile.fullName || "Sourav Kumar");
+          setProfileName(session.profile.fullName || "Guest Learner");
           setProfileAvatar(
             session.profile.avatar || "https://i.pravatar.cc/80?img=64"
           );
@@ -578,7 +582,7 @@ const LearningPage = () => {
           currentSelection.title
             ? currentSelection.videoUrl
               ? ""
-              : "No topic video found right now. Try another lesson."
+              : "Video search unavailable. Check YouTube API key or try another topic."
             : "Select a topic to start learning."
         );
         if (remoteContentPack) {
@@ -599,37 +603,11 @@ const LearningPage = () => {
     };
   }, [sessionEmail]);
 
-  useEffect(() => {
-    if (!sessionEmail) return;
-
-    let active = true;
-    fetchCampusGrowth(sessionEmail)
-      .then((data) => {
-        if (active) {
-          setGrowth(data);
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setGrowth(null);
-        }
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [sessionEmail]);
-
   const handleLogout = () => {
     setProfileOpen(false);
     clearCachedSession();
     navigate("/", { replace: true });
   };
-
-  function animatedNextSlide() {
-    setDirection(1);
-    handleNextSlide();
-  }
 
   useEffect(() => {
     return () => {
@@ -675,18 +653,16 @@ const LearningPage = () => {
     }
 
     let active = true;
-    const generateQuickNotes = async () => {
+    const loadQuickNotes = async () => {
       setQuickNotesLoading(true);
       try {
-        const response = await askAITutor({
+        const notes = await generateQuickNotes({
           topic: displayTitle,
-          lessonContent: displayNarration,
-          question:
-            "Give exactly 4 concise revision bullet points for this topic. Keep each under 14 words. No intro, no outro.",
+          narration: displayNarration,
+          unitTitle: selectedUnitTitle,
         });
         if (!active) return;
-        const parsed = parseQuickNotesFromAI(response);
-        setQuickNotesFromApi(parsed);
+        setQuickNotesFromApi(notes);
       } catch {
         if (!active) return;
         setQuickNotesFromApi([]);
@@ -697,12 +673,12 @@ const LearningPage = () => {
       }
     };
 
-    generateQuickNotes();
+    loadQuickNotes();
 
     return () => {
       active = false;
     };
-  }, [displayNarration, displayTitle]);
+  }, [displayNarration, displayTitle, selectedUnitTitle]);
 
   useEffect(() => {
     if (!displayTitle) return;
@@ -799,12 +775,14 @@ const LearningPage = () => {
 
     let resolvedVideoUrl = "";
     try {
-      resolvedVideoUrl =
+    resolvedVideoUrl =
         (await resolveTopicVideo({
           title: matchedTopic.title,
           universityId: campusSelection.universityId,
           subjectTitle: matchedTopic.subjectTitle,
           unitTitle: matchedTopic.unitTitle,
+          language: videoLanguage,
+          length: videoLength,
         })) ||
         matchedTopic.videoUrl ||
         "";
@@ -820,7 +798,7 @@ const LearningPage = () => {
     setVideoMessage(
       resolvedVideoUrl
         ? ""
-        : "No topic video found right now. Try another lesson topic."
+        : "Video search unavailable. Check YouTube API key or try another topic."
     );
     setVideoLoading(false);
     localStorage.setItem("selectedTopicVideoUrl", resolvedVideoUrl);
@@ -838,6 +816,46 @@ const LearningPage = () => {
     syncBookmarkedTopicMetadata(savedTopic);
     setSearchDropdownOpen(false);
   };
+
+  const handleSuggestedTopicSelect = (title: string) => {
+    const normalized = title.toLowerCase();
+    const matchedTopic =
+      allTopics.find((topic) => topic.title.toLowerCase() === normalized) ||
+      allTopics.find((topic) => topic.title.toLowerCase().includes(normalized));
+
+    void handleTopicSelect(matchedTopic || { title });
+  };
+
+  useEffect(() => {
+    if (
+      demoTopicPreloadedRef.current ||
+      selectedTopicTitle ||
+      recentTopics.length ||
+      localStorage.getItem(DEMO_TOPIC_PRELOADED_STORAGE_KEY) === "true"
+    ) {
+      return;
+    }
+
+    demoTopicPreloadedRef.current = true;
+    localStorage.setItem(DEMO_TOPIC_PRELOADED_STORAGE_KEY, "true");
+
+    const timer = window.setTimeout(() => {
+      const demoTopic =
+        allTopics.find((topic) => topic.title.toLowerCase() === DEMO_TOPIC_TITLE.toLowerCase()) ||
+        allTopics.find((topic) => topic.title.toLowerCase().includes("database")) ||
+        allTopics.find((topic) => topic.title.toLowerCase().includes("computer network"));
+
+      void handleTopicSelect(
+        demoTopic || {
+          title: DEMO_TOPIC_TITLE,
+          narration:
+            "Database Management Systems help store, organize, retrieve, and manage structured data efficiently.",
+        }
+      );
+    }, 500);
+
+    return () => window.clearTimeout(timer);
+  }, [allTopics, recentTopics.length, selectedTopicTitle]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -1055,7 +1073,10 @@ const LearningPage = () => {
 
   const createPublicShareUrl = async (artifact: "topic" | "notes" | "explainer" | "quiz") => {
     if (!displayTitle) return "";
-    const revisionText = quickNotes.slice(0, 3).join(" | ");
+    const revisionText = quickNotes
+      .slice(0, 3)
+      .map((section) => `${section.title}: ${section.points[0] || ""}`)
+      .join(" | ");
     const shareTitle =
       artifact === "topic"
         ? `Lerno topic: ${displayTitle}`
@@ -1131,20 +1152,16 @@ const LearningPage = () => {
     }
   };
 
-  const shareArtifact = async (artifact: "invite" | "notes" | "explainer" | "quiz") => {
-    const shareUrl =
-      artifact === "invite" ? inviteLink : await createPublicShareUrl(artifact);
+  const shareArtifact = async (artifact: "notes" | "explainer" | "quiz") => {
+    const shareUrl = await createPublicShareUrl(artifact);
     if (!shareUrl) return;
 
-    const revisionText = quickNotes.slice(0, 3).join(" | ");
+    const revisionText = quickNotes
+      .slice(0, 3)
+      .map((section) => `${section.title}: ${section.points[0] || ""}`)
+      .join(" | ");
     const payload =
-      artifact === "invite"
-        ? {
-            title: "Join my Lerno campus loop",
-            text: `Use my referral code ${campusSelection.referralCode || ""} to join ${cachedSession?.profile?.universityName || "my campus"} on Lerno.`,
-            url: shareUrl,
-          }
-        : artifact === "notes"
+      artifact === "notes"
           ? {
               title: `Revision notes: ${displayTitle}`,
               text: revisionText || `Quick revision for ${displayTitle}`,
@@ -1204,29 +1221,89 @@ const LearningPage = () => {
         source: "practice-set",
       },
     });
-    fetchCampusGrowth(sessionEmail)
-      .then((data) => setGrowth(data))
-      .catch(() => undefined);
   };
 
-  const handleCopyInviteLink = async () => {
-    if (!inviteLink) return;
-    try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(inviteLink);
-      }
-      trackEvent({
-        eventType: "share_clicked",
-        email: sessionEmail,
-        selection: campusSelection,
-        metadata: {
-          artifact: "invite",
-          referralCode: campusSelection.referralCode || "",
-        },
-      });
-    } catch {
-      // Ignore
-    }
+  const handleRefreshVideo = () => {
+    if (!displayTitle) return;
+
+    Object.keys(localStorage)
+      .filter((key) => key.startsWith(VIDEO_CACHE_PREFIX))
+      .forEach((key) => localStorage.removeItem(key));
+
+    const topic = currentTopicMeta || {
+      title: displayTitle,
+      narration: displayNarration,
+      subjectTitle: syllabusSubjectTitle,
+      unitTitle: selectedUnitTitle,
+      unitTopics: selectedUnitTopicsDisplay,
+    };
+    void handleTopicSelect(topic);
+  };
+
+  const handleDownloadSummary = () => {
+    if (!displayTitle) return;
+
+    const notesHtml = quickNotes
+      .map(
+        (section) => `
+          <section>
+            <h2>${escapeHtml(section.title)}</h2>
+            <ul>${section.points.map((point) => `<li>${escapeHtml(point)}</li>`).join("")}</ul>
+          </section>`
+      )
+      .join("");
+    const fiveMarkHtml =
+      examQuestions?.fiveMarkQuestions
+        .map((question, index) => `<li><strong>Q${index + 1}.</strong> ${escapeHtml(question.question)}</li>`)
+        .join("") || "<li>Select a topic and wait for exam questions to generate.</li>";
+    const tenMarkHtml =
+      examQuestions?.tenMarkQuestions
+        .map((question, index) => `<li><strong>Q${index + 1}.</strong> ${escapeHtml(question.question)}</li>`)
+        .join("") || "<li>Select a topic and wait for exam questions to generate.</li>";
+
+    const printWindow = window.open("", "_blank", "noopener,noreferrer");
+    if (!printWindow) return;
+
+    printWindow.document.write(`
+      <!doctype html>
+      <html>
+        <head>
+          <title>${escapeHtml(displayTitle)} Notes</title>
+          <style>
+            body { font-family: Inter, Arial, sans-serif; color: #111827; margin: 40px; line-height: 1.55; }
+            h1 { margin: 0 0 6px; font-size: 30px; }
+            h2 { margin: 24px 0 8px; font-size: 17px; color: #047857; text-transform: uppercase; letter-spacing: .08em; }
+            p { color: #4b5563; }
+            li { margin: 8px 0; }
+            .meta { margin-bottom: 24px; color: #6b7280; }
+            .box { border: 1px solid #d1d5db; border-radius: 14px; padding: 18px 22px; margin: 18px 0; }
+          </style>
+        </head>
+        <body>
+          <h1>${escapeHtml(displayTitle)}</h1>
+          <p class="meta">${escapeHtml(syllabusSubjectTitle || "Lerno.ai")} ${selectedUnitTitle ? `• ${escapeHtml(selectedUnitTitle)}` : ""}</p>
+          <div class="box">
+            <h2>Quick Notes</h2>
+            ${notesHtml}
+          </div>
+          <div class="box">
+            <h2>5 Mark Questions</h2>
+            <ol>${fiveMarkHtml}</ol>
+          </div>
+          <div class="box">
+            <h2>10 Mark Questions</h2>
+            <ol>${tenMarkHtml}</ol>
+          </div>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    window.setTimeout(() => printWindow.print(), 250);
+  };
+
+  const scrollToPanel = (id: string) => {
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   const handleOpenExamWeek = () => {
@@ -1249,14 +1326,13 @@ const LearningPage = () => {
     }, 420);
   };
 
-  const lastSelectionHint = selectedTopicTitle || (allTopics[0]?.title ?? "");
   const isDarkTheme = theme === "dark";
   const textPrimary = isDarkTheme ? "text-white" : "text-slate-900";
   const textSecondary = isDarkTheme ? "text-white/70" : "text-slate-600";
   const textMuted = isDarkTheme ? "text-white/45" : "text-slate-500";
   const subtleBorder = isDarkTheme ? "border-white/10" : "border-slate-300/70";
   const glassCard = isDarkTheme
-    ? "border-white/10 bg-zinc-900/50 hover:border-white/30 hover:bg-zinc-900/70"
+    ? "border-white/15 bg-zinc-900/60 shadow-[0_28px_90px_-55px_rgba(255,255,255,0.22)] hover:border-white/35 hover:bg-zinc-900/75"
     : "border-slate-300/70 bg-white/88 shadow-[0_24px_80px_-40px_rgba(148,163,184,0.45)] hover:border-slate-400/80 hover:bg-white";
   const sidebarShell = isDarkTheme
     ? "border-white/10 bg-zinc-950/80 shadow-[0_30px_120px_-60px_rgba(0,0,0,0.9)]"
@@ -1293,7 +1369,7 @@ const LearningPage = () => {
                         </div>
                         <div>
                           <p className={`text-lg font-semibold ${textPrimary}`}>Lerno.ai</p>
-                          <p className={`text-sm ${textMuted}`}>Learning Dashboard</p>
+                          <p className={`text-sm ${textMuted}`}>AI Learning Workspace</p>
                         </div>
                       </div>
                     </>
@@ -1327,6 +1403,27 @@ const LearningPage = () => {
 
             {sidebarCollapsed ? (
               <div className="flex flex-1 flex-col items-center gap-4 px-3 py-5">
+                <button
+                  type="button"
+                  onClick={() => setSidebarCollapsed(false)}
+                  className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 via-fuchsia-500 to-cyan-400 text-lg font-semibold text-white shadow-[0_15px_40px_-18px_rgba(168,85,247,0.8)]"
+                  aria-label="Open Lerno workspace"
+                  title="Lerno.ai"
+                >
+                  L
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSidebarCollapsed(false)}
+                  className={`flex w-full flex-col items-center rounded-2xl border px-3 py-4 text-center transition ${chipCard}`}
+                >
+                  <span className={`text-[11px] uppercase tracking-[0.22em] ${textMuted}`}>
+                    Today
+                  </span>
+                  <span className={`mt-2 text-xl font-semibold ${textPrimary}`}>
+                    {todayTopicsStudied}
+                  </span>
+                </button>
                 <button
                   type="button"
                   onClick={() => setSidebarCollapsed(false)}
@@ -1376,7 +1473,10 @@ const LearningPage = () => {
                     </button>
                   ) : (
                     <div className={`rounded-2xl border border-dashed px-4 py-5 text-sm ${subtleBorder} ${isDarkTheme ? "bg-white/[0.02] text-white/45" : "bg-slate-50 text-slate-500"}`}>
-                      Your last lesson will appear here once you start studying.
+                      <p className={`font-medium ${textPrimary}`}>Start with a topic</p>
+                      <p className={`mt-1 text-xs leading-5 ${textMuted}`}>
+                        Search or tap a suggestion to generate video, notes, questions, and tutor help.
+                      </p>
                     </div>
                   )}
                 </section>
@@ -1384,102 +1484,29 @@ const LearningPage = () => {
                 <section>
                   <div className="mb-3 flex items-center justify-between">
                     <p className={`text-xs uppercase tracking-[0.28em] ${textMuted}`}>
-                      Campus Loop
+                      Progress
                     </p>
-                    <span className={`text-xs ${textMuted}`}>
-                      {growth?.ambassadorMetrics.weeklyActivationProgress.progressPercent ?? 0}%
-                    </span>
+                    <span className={`text-xs ${textMuted}`}>Today</span>
                   </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    {[
-                      ["Streak", growth?.ambassadorMetrics.streakDays ?? 0],
-                      ["Quizzes", growth?.ambassadorMetrics.quizzesCompleted ?? 0],
-                      ["Invites", growth?.ambassadorMetrics.inviteCount ?? 0],
-                    ].map(([label, value]) => (
+                  <div className={`rounded-2xl border p-4 ${chipCard}`}>
+                    <div className="flex items-center gap-4">
                       <div
-                        key={label}
-                        className={`rounded-2xl border px-3 py-3 text-center ${chipCard}`}
+                        className="grid h-16 w-16 shrink-0 place-items-center rounded-full"
+                        style={{
+                          background: `conic-gradient(#34d399 ${progressPercent * 3.6}deg, ${isDarkTheme ? "rgba(255,255,255,0.1)" : "#e2e8f0"} 0deg)`,
+                        }}
                       >
-                        <p className={`text-[11px] uppercase tracking-[0.2em] ${textMuted}`}>{label}</p>
-                        <p className={`mt-2 text-lg font-semibold ${textPrimary}`}>{value}</p>
-                      </div>
-                    ))}
-                  </div>
-                  <div className={`mt-3 rounded-2xl border px-4 py-4 ${chipCard}`}>
-                    <p className={`text-[11px] uppercase tracking-[0.22em] ${textMuted}`}>
-                      Referral Code
-                    </p>
-                    <p className={`mt-2 text-sm font-semibold ${textPrimary}`}>
-                      {campusSelection.referralCode || "Unlock after onboarding"}
-                    </p>
-                    <div className="mt-3 flex gap-2">
-                      <button
-                        type="button"
-                        onClick={handleCopyInviteLink}
-                        disabled={!inviteLink}
-                        className={`flex-1 rounded-xl px-3 py-2 text-xs font-semibold ${
-                          isDarkTheme
-                            ? "bg-cyan-500/15 text-cyan-200 disabled:bg-white/5 disabled:text-white/35"
-                            : "bg-cyan-100 text-cyan-700 disabled:bg-slate-100 disabled:text-slate-400"
-                        }`}
-                      >
-                        Copy Invite
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => shareArtifact("invite")}
-                        disabled={!inviteLink}
-                        className={`flex-1 rounded-xl px-3 py-2 text-xs font-semibold ${
-                          isDarkTheme
-                            ? "bg-violet-500/15 text-violet-200 disabled:bg-white/5 disabled:text-white/35"
-                            : "bg-violet-100 text-violet-700 disabled:bg-slate-100 disabled:text-slate-400"
-                        }`}
-                      >
-                        Share Invite
-                      </button>
-                    </div>
-                  </div>
-                </section>
-
-                <section>
-                  <div className="mb-3 flex items-center justify-between">
-                    <p className={`text-xs uppercase tracking-[0.28em] ${textMuted}`}>
-                      Campus Leaderboards
-                    </p>
-                    <span className={`text-xs ${textMuted}`}>
-                      Top 3
-                    </span>
-                  </div>
-                  <div className="space-y-2">
-                    {[
-                      { label: "Referrals", entry: growth?.leaderboards.referrals?.[0] },
-                      { label: "Streaks", entry: growth?.leaderboards.streaks?.[0] },
-                      { label: "Quizzes", entry: growth?.leaderboards.quizzes?.[0] },
-                    ].map(({ label, entry }) =>
-                      entry ? (
-                        <div
-                          key={`${label}-${entry.rank}-${entry.email}`}
-                          className={`rounded-2xl border px-4 py-3 ${chipCard}`}
-                        >
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className={`truncate text-sm font-medium ${textPrimary}`}>
-                                {entry.rank}. {entry.fullName}
-                              </p>
-                              <p className={`mt-1 truncate text-xs ${textMuted}`}>{label} leaderboard</p>
-                            </div>
-                            <span className={`text-sm font-semibold ${textPrimary}`}>{entry.value}</span>
-                          </div>
+                        <div className={`grid h-12 w-12 place-items-center rounded-full text-sm font-semibold ${
+                          isDarkTheme ? "bg-zinc-950 text-white" : "bg-white text-slate-900"
+                        }`}>
+                          {progressPercent}%
                         </div>
-                      ) : null
-                    )}
-                    {!(growth?.leaderboards.referrals || []).length &&
-                    !(growth?.leaderboards.streaks || []).length &&
-                    !(growth?.leaderboards.quizzes || []).length ? (
-                      <div className={`rounded-2xl border border-dashed px-4 py-5 text-sm ${subtleBorder} ${isDarkTheme ? "bg-white/[0.02] text-white/45" : "bg-slate-50 text-slate-500"}`}>
-                        Leaderboard will light up once referrals start converting.
                       </div>
-                    ) : null}
+                      <div className="min-w-0 space-y-1 text-sm">
+                        <p className={textPrimary}>Today: {todayTopicsStudied} topics studied</p>
+                        <p className={textMuted}>Practice: {completedPracticeTopics.length} set done</p>
+                      </div>
+                    </div>
                   </div>
                 </section>
 
@@ -1528,7 +1555,10 @@ const LearningPage = () => {
                       })
                     ) : (
                       <div className={`rounded-2xl border border-dashed px-4 py-5 text-sm ${subtleBorder} ${isDarkTheme ? "bg-white/[0.02] text-white/45" : "bg-slate-50 text-slate-500"}`}>
-                        Open a few lessons and your recent topics will show here.
+                        <p className={`font-medium ${textPrimary}`}>Start learning</p>
+                        <p className={`mt-1 text-xs leading-5 ${textMuted}`}>
+                          Recent topics will appear here after your first search.
+                        </p>
                       </div>
                     )}
                   </div>
@@ -1577,7 +1607,10 @@ const LearningPage = () => {
                       })
                     ) : (
                       <div className={`rounded-2xl border border-dashed px-4 py-5 text-sm ${subtleBorder} ${isDarkTheme ? "bg-white/[0.02] text-white/45" : "bg-slate-50 text-slate-500"}`}>
-                        Star any topic from the lesson header to save it here.
+                        <p className={`font-medium ${textPrimary}`}>Bookmark topics</p>
+                        <p className={`mt-1 text-xs leading-5 ${textMuted}`}>
+                          Use the bookmark button beside a topic to build your saved list.
+                        </p>
                       </div>
                     )}
                   </div>
@@ -1591,74 +1624,14 @@ const LearningPage = () => {
       <div className={`w-full flex flex-col items-center sticky top-0 z-20 pb-6 pt-3 md:pt-4 backdrop-blur-xl relative transition-colors duration-300 ${
         isDarkTheme ? "bg-black/50" : "bg-gradient-to-b from-white/85 via-white/55 to-transparent"
       }`}>
-        <div
-          ref={profileRef}
-          className="absolute right-2 top-2 md:right-6 md:top-4 flex flex-col items-end"
-        >
-          <button
-            type="button"
-            onClick={() => setProfileOpen((prev) => !prev)}
-            className={`flex items-center gap-2 px-3 py-2 rounded-full border shadow-[0_20px_60px_-25px_rgba(0,0,0,0.7)] backdrop-blur-xl transition duration-200 ${
+        <div ref={searchRef} className="mt-1 w-full max-w-5xl px-2 md:px-6 relative">
+          <div
+            className={`flex items-center gap-2 rounded-[28px] border p-2 shadow-[0_28px_90px_-55px_rgba(0,0,0,0.9)] backdrop-blur-2xl transition-colors duration-300 ${
               isDarkTheme
-                ? "bg-white/5 border-white/10 hover:bg-white/10"
-                : "bg-white/92 border-slate-300/70 hover:bg-white"
+                ? "border-white/10 bg-zinc-950/72"
+                : "border-slate-300/80 bg-white/88"
             }`}
           >
-            <img
-              src={profileAvatar}
-              alt={profileName}
-              className="h-9 w-9 rounded-full object-cover border border-white/10 shadow-inner shadow-black/40"
-            />
-            <span className={`text-sm font-medium hidden sm:block ${isDarkTheme ? "text-white/90" : "text-slate-800"}`}>{profileName}</span>
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              strokeWidth={1.5}
-              stroke="currentColor"
-              className={`w-4 h-4 transition-transform ${profileOpen ? "rotate-180" : "rotate-0"} ${isDarkTheme ? "text-white/70" : "text-slate-500"}`}
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 9l6 6 6-6" />
-            </svg>
-          </button>
-          <AnimatePresence>
-            {profileOpen && (
-              <motion.div
-                initial={{ opacity: 0, y: -6 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -6 }}
-                transition={{ duration: 0.18 }}
-                className={`mt-2 w-44 rounded-2xl backdrop-blur-2xl border overflow-hidden ${
-                  isDarkTheme
-                    ? "bg-zinc-900/90 border-white/10 shadow-[0_30px_80px_-40px_rgba(0,0,0,0.8)]"
-                    : "bg-white/95 border-slate-300/70 shadow-[0_30px_80px_-40px_rgba(148,163,184,0.45)]"
-                }`}
-              >
-                <button
-                  className={`w-full text-left px-4 py-3 text-sm transition-colors duration-150 ${
-                    isDarkTheme ? "text-white/80 hover:bg-white/5" : "text-slate-700 hover:bg-slate-50"
-                  }`}
-                  onClick={() => {
-                    setProfileOpen(false);
-                    navigate("/profile");
-                  }}
-                >
-                  My Profile
-                </button>
-                <button
-                  className={`w-full text-left px-4 py-3 text-sm transition-colors duration-150 ${
-                    isDarkTheme ? "text-white/80 hover:bg-white/5" : "text-slate-700 hover:bg-slate-50"
-                  }`}
-                  onClick={handleLogout}
-                >
-                  Logout
-                </button>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-        <div ref={searchRef} className="mt-1 w-full max-w-4xl px-2 md:px-6 relative">
-          <div className="flex items-center gap-3">
             <motion.button
               type="button"
               onClick={handleOpenExamWeek}
@@ -1682,10 +1655,10 @@ const LearningPage = () => {
                   : { scale: 1 }
               }
               transition={{ duration: 0.38, ease: "easeInOut" }}
-              className={`relative flex h-12 shrink-0 items-center gap-2 overflow-hidden rounded-full border px-4 shadow-[0_20px_60px_-25px_rgba(0,0,0,0.45)] backdrop-blur-xl transition-all duration-300 ${
+              className={`relative flex h-12 shrink-0 items-center gap-2 overflow-hidden rounded-2xl border px-3.5 transition-all duration-300 ${
                 isDarkTheme
-                  ? "border-cyan-400/20 bg-gradient-to-r from-cyan-500/15 via-sky-500/10 to-fuchsia-500/15 text-white hover:bg-white/10"
-                  : "border-cyan-300/80 bg-white/92 text-slate-800 hover:bg-white"
+                  ? "border-white/10 bg-white/[0.04] text-white/85 hover:border-cyan-300/35 hover:bg-white/[0.08]"
+                  : "border-slate-300/70 bg-slate-50 text-slate-800 hover:border-cyan-300 hover:bg-white"
               }`}
               aria-label="Open Exam Week planner"
               title="Open Exam Week planner"
@@ -1697,8 +1670,8 @@ const LearningPage = () => {
               />
               <span className="relative z-10 flex items-center gap-2">
                 <span
-                  className={`flex h-8 w-8 items-center justify-center rounded-full ${
-                    isDarkTheme ? "bg-white/10 text-cyan-100" : "bg-cyan-100 text-cyan-700"
+                  className={`flex h-8 w-8 items-center justify-center rounded-xl ${
+                    isDarkTheme ? "bg-cyan-400/10 text-cyan-100" : "bg-cyan-100 text-cyan-700"
                   }`}
                 >
                   <svg
@@ -1714,19 +1687,19 @@ const LearningPage = () => {
                   </svg>
                 </span>
                 <span className="hidden sm:block text-left">
-                  <span className="block text-[10px] uppercase tracking-[0.22em] opacity-65">
-                    Exam Week
+                  <span className="block text-[10px] uppercase tracking-[0.18em] opacity-55">
+                    Exam
                   </span>
-                  <span className="block text-sm font-semibold">
+                  <span className="block text-sm font-semibold leading-4">
                     {examWeekLaunchPending ? "Opening..." : "Planner"}
                   </span>
                 </span>
               </span>
             </motion.button>
-            <div className={`flex flex-1 items-center gap-3 px-4 py-2.5 rounded-full shadow-[0_20px_60px_-25px_rgba(0,0,0,0.7)] focus-within:ring-2 focus-within:ring-purple-500/60 backdrop-blur-xl transition-colors duration-300 ${
+            <div className={`flex h-12 flex-1 items-center gap-3 rounded-2xl border px-4 transition-colors duration-300 focus-within:border-violet-300/70 ${
               isDarkTheme
-                ? "bg-white/5 border border-white/10"
-                : "bg-white/90 border border-slate-300/80"
+                ? "border-white/10 bg-black/35"
+                : "border-slate-300/70 bg-white"
             }`}>
             <button
               type="button"
@@ -1759,11 +1732,7 @@ const LearningPage = () => {
                 }
               }}
               onKeyDown={handleSearchKeyDown}
-              placeholder={
-                lastSelectionHint
-                  ? "What do you want to learn today?"
-                  : "What do you want to learn today?"
-              }
+              placeholder="Search any topic: DBMS, SQL joins, OS scheduling..."
               className={`w-full bg-transparent outline-none text-sm md:text-base transition-colors duration-300 ${
                 isDarkTheme
                   ? "text-white placeholder-white/40"
@@ -1771,50 +1740,108 @@ const LearningPage = () => {
               }`}
             />
           </div>
-            <button
-              type="button"
-              onClick={() =>
-                setTheme((prev) => (prev === "dark" ? "light" : "dark"))
-              }
-              className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full border shadow-[0_20px_60px_-25px_rgba(0,0,0,0.45)] backdrop-blur-xl transition-all duration-300 ${
-                isDarkTheme
-                  ? "border-white/10 bg-white/5 text-amber-200 hover:bg-white/10"
-                  : "border-slate-300/80 bg-white/90 text-slate-700 hover:bg-white"
+            <div
+              ref={profileRef}
+              className={`flex h-12 shrink-0 items-center gap-1 rounded-2xl border p-1 ${
+                isDarkTheme ? "border-white/10 bg-black/30" : "border-slate-300/70 bg-slate-50"
               }`}
-              aria-label={
-                isDarkTheme ? "Switch to light mode" : "Switch to dark mode"
-              }
-              title={isDarkTheme ? "Light mode" : "Dark mode"}
             >
-              {isDarkTheme ? (
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth={1.7}
-                  className="h-5 w-5"
-                >
-                  <circle cx="12" cy="12" r="4.5" />
-                  <path strokeLinecap="round" d="M12 2.75v2.5M12 18.75v2.5M21.25 12h-2.5M5.25 12h-2.5M18.54 5.46l-1.77 1.77M7.23 16.77l-1.77 1.77M18.54 18.54l-1.77-1.77M7.23 7.23 5.46 5.46" />
-                </svg>
-              ) : (
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth={1.7}
-                  className="h-5 w-5"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M21 12.79A9 9 0 1 1 11.21 3c-.18.58-.28 1.2-.28 1.84 0 3.49 2.83 6.32 6.32 6.32.64 0 1.26-.1 1.84-.28Z"
-                  />
-                </svg>
-              )}
-            </button>
+              <button
+                type="button"
+                onClick={() =>
+                  setTheme((prev) => (prev === "dark" ? "light" : "dark"))
+                }
+                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-all duration-300 ${
+                  isDarkTheme
+                    ? "bg-amber-300/10 text-amber-200 hover:bg-amber-300/15"
+                    : "bg-white text-slate-700 shadow-sm hover:text-slate-900"
+                }`}
+                aria-label={
+                  isDarkTheme ? "Switch to light mode" : "Switch to dark mode"
+                }
+                title={isDarkTheme ? "Light mode" : "Dark mode"}
+              >
+                {isDarkTheme ? (
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.7}
+                    className="h-5 w-5"
+                  >
+                    <circle cx="12" cy="12" r="4.5" />
+                    <path strokeLinecap="round" d="M12 2.75v2.5M12 18.75v2.5M21.25 12h-2.5M5.25 12h-2.5M18.54 5.46l-1.77 1.77M7.23 16.77l-1.77 1.77M18.54 18.54l-1.77-1.77M7.23 7.23 5.46 5.46" />
+                  </svg>
+                ) : (
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.7}
+                    className="h-5 w-5"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M21 12.79A9 9 0 1 1 11.21 3c-.18.58-.28 1.2-.28 1.84 0 3.49 2.83 6.32 6.32 6.32.64 0 1.26-.1 1.84-.28Z"
+                    />
+                  </svg>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => setProfileOpen((prev) => !prev)}
+                className={`flex h-10 items-center gap-2 rounded-xl px-2.5 transition ${
+                  isDarkTheme
+                    ? "text-white/85 hover:bg-white/[0.06]"
+                    : "text-slate-800 hover:bg-white"
+                }`}
+              >
+                <img
+                  src={profileAvatar}
+                  alt={profileName}
+                  className="h-7 w-7 rounded-lg object-cover"
+                />
+                <span className="hidden max-w-[120px] truncate text-sm font-semibold md:block">{profileName}</span>
+              </button>
+              <AnimatePresence>
+                {profileOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -6 }}
+                    transition={{ duration: 0.18 }}
+                    className={`absolute right-6 top-[calc(100%+0.75rem)] z-40 w-44 overflow-hidden rounded-2xl border backdrop-blur-2xl ${
+                      isDarkTheme
+                        ? "border-white/10 bg-zinc-900/95 shadow-[0_30px_80px_-40px_rgba(0,0,0,0.8)]"
+                        : "border-slate-300/70 bg-white/95 shadow-[0_30px_80px_-40px_rgba(148,163,184,0.45)]"
+                    }`}
+                  >
+                    <button
+                      className={`w-full px-4 py-3 text-left text-sm transition-colors duration-150 ${
+                        isDarkTheme ? "text-white/80 hover:bg-white/5" : "text-slate-700 hover:bg-slate-50"
+                      }`}
+                      onClick={() => {
+                        setProfileOpen(false);
+                        navigate("/profile");
+                      }}
+                    >
+                      My Profile
+                    </button>
+                    <button
+                      className={`w-full px-4 py-3 text-left text-sm transition-colors duration-150 ${
+                        isDarkTheme ? "text-white/80 hover:bg-white/5" : "text-slate-700 hover:bg-slate-50"
+                      }`}
+                      onClick={handleLogout}
+                    >
+                      Reset Session
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
           </div>
           {searchDropdownOpen && search.trim() ? (
             <div className={`absolute left-0 right-0 top-[calc(100%+0.75rem)] z-30 overflow-hidden rounded-[24px] border p-3 backdrop-blur-2xl ${
@@ -1918,104 +1945,6 @@ const LearningPage = () => {
           </div>
         )}
 
-        <div className="z-10 flex mt-6">
-          <div className="flex items-center gap-3">
-            <div
-              className={cn(
-                `group rounded-full border text-base transition-all ease-in hover:cursor-pointer shadow-lg ${
-                  isDarkTheme
-                    ? "border-black/5 bg-neutral-900 hover:bg-neutral-800 text-white"
-                    : "border-slate-300/80 bg-white/95 text-slate-900 hover:bg-white"
-                }`
-              )}
-            >
-              {isDarkTheme ? (
-                <AnimatedShinyText className="inline-flex items-center justify-center px-6 py-2.5 font-medium text-lg transition ease-out">
-                  <AnimatePresence mode="wait">
-                    <motion.span
-                      key={currentSlideIndex}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -20 }}
-                      transition={{ duration: 0.3 }}
-                    >
-                      {displayTitle || "Select a topic to start learning."}
-                    </motion.span>
-                  </AnimatePresence>
-                </AnimatedShinyText>
-              ) : (
-                <div className="inline-flex items-center justify-center px-6 py-2.5 font-semibold text-lg text-slate-800">
-                  <AnimatePresence mode="wait">
-                    <motion.span
-                      key={currentSlideIndex}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -20 }}
-                      transition={{ duration: 0.3 }}
-                    >
-                      {displayTitle || "Select a topic to start learning."}
-                    </motion.span>
-                  </AnimatePresence>
-                </div>
-              )}
-            </div>
-            <button
-              type="button"
-              onClick={toggleBookmark}
-              disabled={!displayTitle}
-              className={`flex h-12 w-12 items-center justify-center rounded-full border transition ${
-                isCurrentTopicBookmarked
-                  ? "border-amber-400/40 bg-amber-400/10 text-amber-300"
-                  : isDarkTheme
-                    ? "border-white/10 bg-white/5 text-white/55 hover:bg-white/10 hover:text-white"
-                    : "border-slate-300/80 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-900"
-              } disabled:cursor-not-allowed disabled:opacity-40`}
-              aria-label={
-                isCurrentTopicBookmarked
-                  ? "Remove bookmark"
-                  : "Bookmark current topic"
-              }
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill={isCurrentTopicBookmarked ? "currentColor" : "none"}
-                stroke="currentColor"
-                strokeWidth={1.6}
-                className="h-5 w-5"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="m17.25 21-5.25-3-5.25 3V5.25A2.25 2.25 0 0 1 9 3h6a2.25 2.25 0 0 1 2.25 2.25V21Z"
-                />
-              </svg>
-            </button>
-            <button
-              type="button"
-              onClick={handleShareTopic}
-              disabled={!displayTitle}
-              className={`flex h-12 w-12 items-center justify-center rounded-full border transition ${
-                isDarkTheme
-                  ? "border-white/10 bg-white/5 text-white/55 hover:bg-white/10 hover:text-white"
-                  : "border-slate-300/80 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-900"
-              } disabled:cursor-not-allowed disabled:opacity-40`}
-              aria-label="Share current topic"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={1.6}
-                className="h-5 w-5"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm9 6a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm0-12a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm-6.4 4.8 3.8 2.4m-3.8-2.4 3.8-2.4" />
-              </svg>
-            </button>
-          </div>
-        </div>
-
       </div>
 
       <AnimatePresence mode="wait" custom={direction}>
@@ -2028,34 +1957,198 @@ const LearningPage = () => {
           exit="exit"
           className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 w-full max-w-6xl"
         >
-          <div className={`relative group overflow-hidden rounded-xl border md:col-span-2 h-72 md:h-96 backdrop-blur-sm transition-all duration-300 ${glassCard}`}>
+          <div className={`relative group overflow-hidden rounded-xl border md:col-span-2 h-[22rem] md:h-[28rem] backdrop-blur-sm transition-all duration-300 ${glassCard}`}>
             <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/20 via-purple-500/20 to-pink-500/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"></div>
             <div className="absolute inset-0 bg-grid-white/[0.02] bg-[size:20px_20px] pointer-events-none"></div>
-            <div className="h-full w-full flex flex-col gap-3 items-center justify-center p-2 text-center">
-              {displayTitle ? <h3 className={`font-semibold text-lg ${textPrimary}`}>{displayTitle}</h3> : null}
-
+            <div className="relative z-10 flex h-full w-full flex-col p-3">
+              <div className="mb-3 flex min-h-10 items-center justify-between gap-3">
+                <div className="min-w-0 text-left">
+                  <p className={`truncate text-lg font-semibold ${textPrimary}`}>
+                    {displayTitle || "Search any topic to start learning"}
+                  </p>
+                  <p className={`text-xs ${textMuted}`}>
+                    {displayTitle ? "Video lesson" : "Video, notes, questions, and tutor will appear here"}
+                  </p>
+                  {displayTitle ? (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {["Beginner", "Exam Focus", "10 min"].map((tag) => (
+                        <span
+                          key={tag}
+                          className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] ${
+                            isDarkTheme
+                              ? "border-white/10 bg-white/[0.04] text-white/55"
+                              : "border-slate-300 bg-slate-50 text-slate-500"
+                          }`}
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={toggleBookmark}
+                    disabled={!displayTitle}
+                    className={`flex h-9 w-9 items-center justify-center rounded-xl border transition ${
+                      isCurrentTopicBookmarked
+                        ? "border-amber-400/40 bg-amber-400/10 text-amber-300"
+                        : isDarkTheme
+                          ? "border-white/10 bg-white/5 text-white/55 hover:bg-white/10 hover:text-white"
+                          : "border-slate-300/80 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                    } disabled:cursor-not-allowed disabled:opacity-40`}
+                    aria-label={
+                      isCurrentTopicBookmarked
+                        ? "Remove bookmark"
+                        : "Bookmark current topic"
+                    }
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill={isCurrentTopicBookmarked ? "currentColor" : "none"}
+                      stroke="currentColor"
+                      strokeWidth={1.6}
+                      className="h-4 w-4"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="m17.25 21-5.25-3-5.25 3V5.25A2.25 2.25 0 0 1 9 3h6a2.25 2.25 0 0 1 2.25 2.25V21Z"
+                      />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleShareTopic}
+                    disabled={!displayTitle}
+                    className={`flex h-9 w-9 items-center justify-center rounded-xl border transition ${
+                      isDarkTheme
+                        ? "border-white/10 bg-white/5 text-white/55 hover:bg-white/10 hover:text-white"
+                        : "border-slate-300/80 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                    } disabled:cursor-not-allowed disabled:opacity-40`}
+                    aria-label="Share current topic"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={1.6}
+                      className="h-4 w-4"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 12a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm9 6a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm0-12a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm-6.4 4.8 3.8 2.4m-3.8-2.4 3.8-2.4" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              <div className="flex min-h-0 flex-1 items-center justify-center text-center">
               {selectedTopicVideoUrl ? (
                 <iframe
                   width="100%"
-                  height="420"
+                  height="100%"
                   src={selectedTopicVideoUrl}
                   title="Topic Video"
                   frameBorder="0"
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                   allowFullScreen
-                  className="rounded-lg w-full max-w-4xl pointer-events-auto"
+                  className="h-full w-full rounded-lg pointer-events-auto"
                 />
               ) : (
-                <div className={textSecondary}>
-                  {videoLoading ? "Loading video..." : videoMessage}
-                </div>
+                videoLoading ? (
+                  <div className={textSecondary}>Loading video...</div>
+                ) : (
+                  <div className="max-w-xl px-4">
+                    <p className={`text-xl font-semibold ${textPrimary}`}>
+                      Search any topic.
+                    </p>
+                    <p className={`mt-3 text-sm leading-7 ${textSecondary}`}>
+                      Lerno will find the best video, make quick notes, generate exam questions,
+                      and keep an AI tutor ready for follow-up doubts.
+                    </p>
+                    <div className="mt-5 flex flex-wrap justify-center gap-2">
+                      {SUGGESTED_TOPIC_TITLES.map((title) => (
+                        <button
+                          key={`hero-suggestion-${title}`}
+                          type="button"
+                          onClick={() => handleSuggestedTopicSelect(title)}
+                          className={`rounded-full border px-3.5 py-2 text-xs font-semibold transition ${
+                            isDarkTheme
+                              ? "border-white/10 bg-white/[0.06] text-white/80 hover:border-violet-300/45 hover:bg-white/[0.12]"
+                              : "border-slate-300 bg-white text-slate-700 hover:border-violet-300 hover:bg-violet-50"
+                          }`}
+                        >
+                          {title}
+                        </button>
+                      ))}
+                    </div>
+                    {videoMessage && videoMessage !== "Select a topic to start learning." ? (
+                      <p className={`mt-4 text-xs ${textMuted}`}>{videoMessage}</p>
+                    ) : null}
+                  </div>
+                )
               )}
+              </div>
+              {displayTitle ? (
+                <div className={`mt-3 flex flex-wrap items-center gap-2 border-t pt-3 ${subtleBorder}`}>
+                  <button
+                    type="button"
+                    onClick={handleRefreshVideo}
+                    disabled={videoLoading}
+                    className={`rounded-xl border px-3 py-2 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                      isDarkTheme
+                        ? "border-white/10 bg-white/[0.04] text-white/75 hover:bg-white/[0.09]"
+                        : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                    }`}
+                  >
+                    Change video
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setVideoLanguage((prev) => (prev === "english" ? "hindi" : "english"))}
+                    className={`rounded-xl border px-3 py-2 text-xs font-semibold transition ${
+                      isDarkTheme
+                        ? "border-white/10 bg-white/[0.04] text-white/75 hover:bg-white/[0.09]"
+                        : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                    }`}
+                  >
+                    Prefer: {videoLanguage === "english" ? "English" : "Hindi"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setVideoLength((prev) => (prev === "long" ? "short" : "long"))}
+                    className={`rounded-xl border px-3 py-2 text-xs font-semibold transition ${
+                      isDarkTheme
+                        ? "border-white/10 bg-white/[0.04] text-white/75 hover:bg-white/[0.09]"
+                        : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                    }`}
+                  >
+                    Length: {videoLength === "long" ? "Long" : "Short"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={toggleBookmark}
+                    className={`rounded-xl border px-3 py-2 text-xs font-semibold transition ${
+                      isCurrentTopicBookmarked
+                        ? isDarkTheme
+                          ? "border-amber-300/30 bg-amber-300/10 text-amber-200"
+                          : "border-amber-300 bg-amber-50 text-amber-700"
+                        : isDarkTheme
+                          ? "border-white/10 bg-white/[0.04] text-white/75 hover:bg-white/[0.09]"
+                          : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                    }`}
+                  >
+                    {isCurrentTopicBookmarked ? "Saved" : "Save video"}
+                  </button>
+                </div>
+              ) : null}
             </div>
             <div className="absolute inset-0 pointer-events-none border border-white/5 rounded-xl"></div>
             <div className="absolute -inset-px bg-gradient-to-r from-purple-500/30 via-transparent to-cyan-500/30 rounded-xl opacity-0 group-hover:opacity-100 blur-xl transition-opacity duration-500 pointer-events-none"></div>
           </div>
 
-          <div className={`relative group overflow-hidden rounded-xl border p-6 h-72 md:h-96 backdrop-blur-sm transition-all duration-300 ${glassCard}`}>
+          <div id="quick-notes" className={`relative group scroll-mt-28 overflow-hidden rounded-xl border p-6 h-72 md:h-96 backdrop-blur-sm transition-all duration-300 ${glassCard}`}>
             <div className="absolute inset-0 bg-gradient-to-br from-green-500/20 via-emerald-500/20 to-teal-500/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
             <div className="absolute inset-0 bg-grid-white/[0.02] bg-[size:20px_20px]"></div>
             <div className="relative z-10 h-full flex flex-col">
@@ -2095,19 +2188,38 @@ const LearningPage = () => {
               >
                 {quickNotesLoading ? (
                   <div className={`mb-3 rounded-2xl border px-4 py-3 text-sm ${isDarkTheme ? "border-white/10 bg-white/[0.03] text-white/60" : "border-slate-300/70 bg-slate-50/90 text-slate-600"}`}>
-                    Generating API quick notes...
+                    Building structured revision notes...
                   </div>
                 ) : null}
                 <div className="space-y-3">
-                  {quickNotes.map((note, index) => (
+                  {quickNotes.map((section) => (
                     <div
-                      key={`${displayTitle || "note"}-${index}`}
-                      className={`rounded-2xl border px-4 py-3 ${isDarkTheme ? "border-white/10 bg-white/[0.03]" : "border-slate-300/70 bg-slate-50/90"}`}
+                      key={`${displayTitle || "note"}-${section.title}`}
+                      className={`rounded-2xl border px-4 py-3 ${
+                        isDarkTheme
+                          ? "border-white/10 bg-white/[0.035]"
+                          : "border-slate-300/70 bg-slate-50/90"
+                      }`}
                     >
-                      <p className={`text-sm leading-7 ${isDarkTheme ? "text-white/80" : "text-slate-700"}`}>
-                        <span className={`mr-2 ${isDarkTheme ? "text-emerald-300" : "text-emerald-500"}`}>•</span>
-                        {note}
+                      <p className={`mb-2 text-xs font-semibold uppercase tracking-[0.18em] ${
+                        isDarkTheme ? "text-emerald-200/70" : "text-emerald-700"
+                      }`}>
+                        {section.title}
                       </p>
+                      <div className="space-y-1.5">
+                        {section.points.map((point) => (
+                          <div key={point} className="flex gap-2">
+                            <span className={`mt-2 h-1.5 w-1.5 shrink-0 rounded-full ${
+                              isDarkTheme ? "bg-emerald-300/75" : "bg-emerald-500"
+                            }`} />
+                            <p className={`text-sm leading-6 ${
+                              isDarkTheme ? "text-white/80" : "text-slate-700"
+                            }`}>
+                              {point}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -2116,7 +2228,7 @@ const LearningPage = () => {
             <div className="absolute -inset-px bg-gradient-to-r from-green-500/30 via-transparent to-emerald-500/30 rounded-xl opacity-0 group-hover:opacity-100 blur-xl transition-opacity duration-500"></div>
           </div>
 
-          <div className={`relative group overflow-hidden rounded-xl border p-4 h-[22rem] md:h-[30rem] backdrop-blur-sm transition-all duration-300 ${glassCard}`}>
+          <div id="exam-practice" className={`relative group scroll-mt-28 overflow-hidden rounded-xl border p-4 h-[22rem] md:h-[30rem] backdrop-blur-sm transition-all duration-300 ${glassCard}`}>
             <div className="absolute inset-0 bg-gradient-to-br from-blue-500/20 via-purple-500/20 to-cyan-500/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
             <div className="absolute inset-0 bg-grid-white/[0.02] bg-[size:20px_20px]"></div>
             <div className="relative z-10 flex h-full flex-col overflow-hidden">
@@ -2141,7 +2253,27 @@ const LearningPage = () => {
               ) : examQuestionsError ? (
                 <p className="text-red-400">{examQuestionsError}</p>
               ) : !displayTitle ? (
-                <p className={textSecondary}>Select a topic to view important exam questions.</p>
+                <div className="space-y-3">
+                  <p className={`text-sm leading-6 ${textSecondary}`}>
+                    After selecting a topic, you will get university-style 5-mark and 10-mark
+                    questions for fast exam prep.
+                  </p>
+                  {[
+                    "Q1. Define the topic and explain its importance.",
+                    "Q2. Compare key concepts with one example.",
+                  ].map((sample) => (
+                    <div
+                      key={sample}
+                      className={`rounded-lg border px-3 py-2 text-sm ${
+                        isDarkTheme
+                          ? "border-white/10 bg-white/[0.04] text-white/55"
+                          : "border-slate-300/70 bg-slate-50 text-slate-500"
+                      }`}
+                    >
+                      {sample}
+                    </div>
+                  ))}
+                </div>
               ) : examQuestions ? (
                 <div className="space-y-4 flex-1 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
                   <div className="flex flex-wrap gap-2">
@@ -2214,7 +2346,7 @@ const LearningPage = () => {
             <div className="absolute -inset-px bg-gradient-to-r from-blue-500/30 via-transparent to-purple-500/30 rounded-xl opacity-0 group-hover:opacity-100 blur-xl transition-opacity duration-500"></div>
           </div>
 
-          <div className="md:col-span-1 h-full">
+          <div id="ai-tutor" className="md:col-span-1 h-full scroll-mt-28">
             <AIChatbot
               lessonTitle={displayTitle}
               lessonContent={displayNarration}
@@ -2226,94 +2358,109 @@ const LearningPage = () => {
             <div className="absolute inset-0 bg-gradient-to-br from-amber-500/20 via-orange-500/20 to-rose-500/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
             <div className="absolute inset-0 bg-grid-white/[0.02] bg-[size:20px_20px]"></div>
             <div className="h-full w-full flex flex-col gap-4 relative z-10">
-              {subjectRevisionPack.length > 0 ? (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className={`font-semibold text-lg ${textPrimary}`}>Revision Pack</p>
-                      {syllabusSubjectTitle ? (
-                        <p className={`text-sm ${textSecondary}`}>{syllabusSubjectTitle}</p>
-                      ) : null}
-                    </div>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className={`font-semibold text-lg ${textPrimary}`}>Related Topics</p>
+                    <p className={`text-sm ${textSecondary}`}>
+                      {displayTitle ? "Keep the learning flow moving" : "Pick a topic to start"}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleDownloadSummary}
+                    disabled={!displayTitle}
+                    className={`rounded-xl px-3 py-2 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-45 ${
+                      isDarkTheme
+                        ? "bg-amber-500/15 text-amber-200 hover:bg-amber-500/25"
+                        : "bg-amber-100 text-amber-700 hover:bg-amber-200"
+                    }`}
+                  >
+                    Summary PDF
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {(displayTitle ? relatedTopics : SUGGESTED_TOPIC_TITLES).map((title) => (
                     <button
+                      key={`related-${title}`}
                       type="button"
-                      onClick={() => shareArtifact("notes")}
-                      className={`rounded-xl px-3 py-2 text-xs font-semibold ${
+                      onClick={() => handleSuggestedTopicSelect(title)}
+                      className={`rounded-xl border px-3 py-2 text-left text-xs font-semibold transition ${
                         isDarkTheme
-                          ? "bg-amber-500/15 text-amber-200 hover:bg-amber-500/25"
-                          : "bg-amber-100 text-amber-700 hover:bg-amber-200"
+                          ? "border-white/10 bg-white/[0.04] text-white/75 hover:bg-white/[0.1]"
+                          : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
                       }`}
                     >
-                      Share Notes
+                      {title}
                     </button>
-                  </div>
-                  {selectedUnitTitle ? (
-                    <p className={`text-sm ${textSecondary}`}>{selectedUnitTitle}</p>
-                  ) : null}
-                  <div className="flex flex-col gap-2">
-                    {subjectRevisionPack.map((topic) => (
-                      <button
-                        key={topic.title}
-                        onClick={() => {
-                          const found = allTopics.find((t) => t.title.toLowerCase() === topic.title.toLowerCase());
-                          if (found) {
-                            handleTopicSelect(found);
-                          } else {
-                            handleTopicSelect({ title: topic.title });
-                          }
-                        }}
-                        className={`w-full text-left px-4 py-2.5 rounded-lg border transition ${
-                          isDarkTheme
-                            ? "bg-white/5 border-white/10 text-white/80 hover:bg-white/10"
-                            : "bg-slate-50 border-slate-300/70 text-slate-700 hover:bg-slate-100"
-                        }`}
-                      >
-                        <p className="font-medium">{topic.title}</p>
-                        <p className={`mt-1 text-xs ${textMuted}`}>{topic.summary}</p>
-                      </button>
-                    ))}
-                  </div>
+                  ))}
                 </div>
-              ) : (
-                <div className="h-full w-full flex flex-col justify-center gap-4">
+              </div>
+
+              <div className={`rounded-2xl border p-4 ${isDarkTheme ? "border-white/10 bg-white/[0.035]" : "border-slate-300/70 bg-slate-50/90"}`}>
+                <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className={`font-semibold text-lg mb-1 ${textPrimary}`}>
-                      📚 Topic Box
-                    </p>
-                    <p className={`text-sm mb-3 ${textSecondary}`}>
-                      {displayTitle
-                        ? `Current topic: ${displayTitle}`
-                        : "Topics will appear here after you choose a unit."}
-                    </p>
-                    <div className={`w-full h-3 rounded-full overflow-hidden ${isDarkTheme ? "bg-white/10" : "bg-slate-200"}`}>
-                      <div
-                        className="h-full rounded-full bg-gradient-to-r from-amber-400 via-orange-400 to-rose-400 transition-all duration-300"
-                        style={{ width: displayTitle ? "100%" : "0%" }}
-                      ></div>
-                    </div>
+                    <p className={`text-sm font-semibold ${textPrimary}`}>Focus Mode</p>
+                    <p className={`text-xs ${textMuted}`}>25 min study session</p>
                   </div>
-                  <div className="flex items-center">
-                    <HoverBorderGradient
-                      containerClassName="rounded-full"
-                      as="button"
-                      className={`flex items-center space-x-2 px-6 py-3 ${isDarkTheme ? "bg-black text-white" : "bg-slate-900 text-white"}`}
-                      onClick={animatedNextSlide}
-                    >
-                      <span>Open Topics</span>
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        strokeWidth={1.5}
-                        stroke="currentColor"
-                        className="w-5 h-5"
-                      >
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
-                      </svg>
-                    </HoverBorderGradient>
-                  </div>
+                  <p className={`font-mono text-2xl font-semibold ${textPrimary}`}>
+                    {formatFocusTime(focusSeconds)}
+                  </p>
                 </div>
-              )}
+                <div className="mt-4 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setFocusRunning((prev) => !prev)}
+                    className={`flex-1 rounded-xl px-3 py-2 text-xs font-semibold ${
+                      isDarkTheme
+                        ? "bg-emerald-500/15 text-emerald-200 hover:bg-emerald-500/25"
+                        : "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
+                    }`}
+                  >
+                    {focusRunning ? "Pause" : "Start"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFocusRunning(false);
+                      setFocusSeconds(FOCUS_DURATION_SECONDS);
+                    }}
+                    className={`rounded-xl border px-3 py-2 text-xs font-semibold ${
+                      isDarkTheme
+                        ? "border-white/10 bg-white/[0.04] text-white/70 hover:bg-white/[0.08]"
+                        : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                    }`}
+                  >
+                    Reset
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => shareArtifact("notes")}
+                  disabled={!displayTitle}
+                  className={`rounded-xl border px-3 py-3 text-left text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-45 ${
+                    isDarkTheme
+                      ? "border-white/10 bg-white/[0.04] text-white/75 hover:bg-white/[0.09]"
+                      : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                  }`}
+                >
+                  Share Notes
+                </button>
+                <button
+                  type="button"
+                  onClick={() => scrollToPanel("ai-tutor")}
+                  className={`rounded-xl border px-3 py-3 text-left text-xs font-semibold transition ${
+                    isDarkTheme
+                      ? "border-white/10 bg-white/[0.04] text-white/75 hover:bg-white/[0.09]"
+                      : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                  }`}
+                >
+                  Ask Tutor
+                </button>
+              </div>
             </div>
             <div className="absolute -inset-px bg-gradient-to-r from-amber-500/30 via-transparent to-rose-500/30 rounded-xl opacity-0 group-hover:opacity-100 blur-xl transition-opacity duration-500"></div>
           </div>
@@ -2322,6 +2469,31 @@ const LearningPage = () => {
       </AnimatePresence>
         </div>
       </div>
+      <nav
+        className={`fixed inset-x-4 bottom-4 z-40 grid grid-cols-4 gap-2 rounded-3xl border p-2 shadow-[0_24px_80px_-40px_rgba(0,0,0,0.8)] backdrop-blur-2xl lg:hidden ${
+          isDarkTheme ? "border-white/10 bg-zinc-950/90" : "border-slate-300/80 bg-white/92"
+        }`}
+      >
+        {[
+          { label: "Search", action: () => searchRef.current?.querySelector("input")?.focus() },
+          { label: "Notes", action: () => scrollToPanel("quick-notes") },
+          { label: "Tutor", action: () => scrollToPanel("ai-tutor") },
+          { label: "Exam", action: () => scrollToPanel("exam-practice") },
+        ].map((item) => (
+          <button
+            key={item.label}
+            type="button"
+            onClick={item.action}
+            className={`rounded-2xl px-2 py-2 text-xs font-semibold transition ${
+              isDarkTheme
+                ? "text-white/70 hover:bg-white/[0.08] hover:text-white"
+                : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+            }`}
+          >
+            {item.label}
+          </button>
+        ))}
+      </nav>
     </div>
   );
 };

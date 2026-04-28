@@ -21,6 +21,7 @@ import uuid
 import random
 import smtplib
 import time
+import requests
 from email.mime.text import MIMEText
 from campus_data import (
     build_profile_context,
@@ -1543,6 +1544,26 @@ class StudyPlannerRequest(BaseModel):
     termId: str = ""
     subjectTitle: str = ""
     topicTitles: List[str] = []
+
+
+class AIChatMessage(BaseModel):
+    role: Literal["system", "user", "assistant"]
+    content: str
+
+
+class AIChatCompletionRequest(BaseModel):
+    model: str = "openrouter/auto"
+    title: str = "Lerno AI"
+    messages: List[AIChatMessage]
+    maxTokens: int = 360
+    temperature: float = 0.6
+
+
+class AITutorRequest(BaseModel):
+    topic: str
+    question: str
+    lessonContent: str = ""
+    model: str = ""
     completedPracticeTopics: List[str] = []
     examDate: str
     dailyMinutes: int = 60
@@ -2763,6 +2784,146 @@ async def upsert_content_pack(item: ContentPackUpsertRequest):
     )
 
     return {"success": True, "contentPack": payload}
+
+
+def get_openrouter_keys() -> List[str]:
+    candidates = [
+        os.getenv("OPENROUTER_API_KEY", ""),
+        os.getenv("OPENROUTER_API_KEY_1", ""),
+        os.getenv("OPENROUTER_API_KEY_2", ""),
+        os.getenv("OPENROUTER_API_KEY_3", ""),
+        os.getenv("OPENROUTER_API_KEYS", ""),
+        os.getenv("VITE_OPENROUTER_API_KEY", ""),
+        os.getenv("VITE_OPENROUTER_API_KEY_1", ""),
+        os.getenv("VITE_OPENROUTER_API_KEY_2", ""),
+        os.getenv("VITE_OPENROUTER_API_KEY_3", ""),
+        os.getenv("VITE_OPENROUTER_API_KEYS", ""),
+    ]
+    keys: List[str] = []
+    for value in candidates:
+        for entry in str(value or "").replace("\n", ",").split(","):
+            key = entry.strip()
+            if key and key.lower() not in {"undefined", "null", "false", "replace_me", "changeme"}:
+                keys.append(key)
+    return list(dict.fromkeys(keys))
+
+
+def compact_context(value: str, max_chars: int = 900) -> str:
+    normalized = re.sub(r"\s+", " ", value or "").strip()
+    normalized = re.sub(r"Auto-selected from search query:[^.]*", "", normalized, flags=re.I).strip()
+    if len(normalized) <= max_chars:
+        return normalized
+    head = normalized[: int(max_chars * 0.7)].strip()
+    tail = normalized[-int(max_chars * 0.2):].strip()
+    return f"{head} ... {tail}".strip()
+
+
+def call_openrouter_chat(item: AIChatCompletionRequest) -> str:
+    keys = get_openrouter_keys()
+    if not keys:
+        raise HTTPException(status_code=503, detail="OpenRouter API key is not configured.")
+
+    last_error = "OpenRouter request failed."
+    for key in keys:
+        try:
+            response = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {key}",
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                    "HTTP-Referer": os.getenv("APP_PUBLIC_URL", "http://localhost:5173"),
+                    "X-Title": item.title or "Lerno AI",
+                },
+                json={
+                    "model": item.model or "openrouter/auto",
+                    "messages": [message.model_dump() for message in item.messages],
+                    "max_tokens": max(64, min(int(item.maxTokens or 360), 1200)),
+                    "temperature": item.temperature,
+                },
+                timeout=25,
+            )
+            data = response.json() if response.content else {}
+            if not response.ok:
+                last_error = data.get("error", {}).get("message") or f"OpenRouter error {response.status_code}"
+                continue
+            content = (
+                data.get("choices", [{}])[0]
+                .get("message", {})
+                .get("content", "")
+                .strip()
+            )
+            if content:
+                return content
+        except Exception as exc:
+            last_error = str(exc)
+    raise HTTPException(status_code=502, detail=last_error)
+
+
+@app.post("/ai/chat-completion")
+async def ai_chat_completion(item: AIChatCompletionRequest):
+    return {"content": call_openrouter_chat(item)}
+
+
+@app.post("/ai/tutor")
+async def ai_tutor(item: AITutorRequest):
+    topic = item.topic.strip() or "this topic"
+    question = item.question.strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="Question is required.")
+
+    lesson_context = compact_context(item.lessonContent, 900)
+    prompt_text = f"""You are Lerno AI Tutor for the topic "{topic}".
+
+Rules:
+- Answer the exact question first.
+- Stay on topic.
+- Explain in simple English with compact headings and bullet points.
+- If the question asks advantages/disadvantages, include both clearly.
+- If useful for exams, include a short Exam tip.
+- Do not mention internal search/query notes, API keys, or unavailable context.
+
+{f"Lesson context: {lesson_context}" if lesson_context else "Lesson context unavailable."}
+
+Student question: {question}"""
+
+    gemini_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY") or os.getenv("VITE_GEMINI_API_KEY")
+    gemini_name = item.model or os.getenv("GEMINI_MODEL") or os.getenv("VITE_GEMINI_MODEL") or "gemini-2.5-flash"
+    if gemini_key:
+        try:
+            response = requests.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/{gemini_name}:generateContent",
+                params={"key": gemini_key},
+                headers={"Content-Type": "application/json"},
+                json={
+                    "contents": [{"parts": [{"text": prompt_text}]}],
+                    "generationConfig": {"temperature": 0.6, "maxOutputTokens": 420},
+                },
+                timeout=25,
+            )
+            data = response.json() if response.content else {}
+            if response.ok:
+                parts = data.get("candidates", [{}])[0].get("content", {}).get("parts", [])
+                content = "".join(part.get("text", "") for part in parts).strip()
+                if content:
+                    return {"content": content}
+        except Exception as exc:
+            print(f"Gemini tutor proxy failed, trying OpenRouter: {exc}")
+
+    chat_request = AIChatCompletionRequest(
+        model=os.getenv("OPENROUTER_TUTOR_MODEL") or os.getenv("VITE_OPENROUTER_TUTOR_MODEL") or "openrouter/auto",
+        title="Lerno AI Tutor",
+        maxTokens=420,
+        temperature=0.55,
+        messages=[
+            AIChatMessage(
+                role="system",
+                content=f"You are Lerno AI Tutor for {topic}. Answer the exact question first, explain simply, and include exam tips when useful.",
+            ),
+            AIChatMessage(role="user", content=prompt_text),
+        ],
+    )
+    return {"content": call_openrouter_chat(chat_request)}
 
 
 @app.post("/process-data")
