@@ -1,0 +1,418 @@
+[
+  {
+    "id": "starter-bca-semester-6",
+    "name": "CS / Engineering Starter Pack",
+    "departmentId": "cs-engineering",
+    "departmentName": "CS / Engineering",
+    "programId": "bca",
+    "programName": "Bachelor of Computer Applications",
+    "termId": "semester-6",
+    "termName": "Semester 6",
+    "reviewStatus": "approved",
+    "subjects": [
+      {
+        "id": "computer-networks",
+        "title": "Introduction to Computer Networks",
+        "units": [
+          {
+            "id": "cn-unit-1",
+            "title": "Unit 1 - Foundations of Computer Networks",
+            "topics": [
+              "Introduction to Computer Networks",
+              "Network Topologies",
+              "OSI Model",
+              "TCP/IP Model",
+              "Data Transmission Concepts",
+              "Network Devices",
+              "Transmission Media"
+            ]
+          },
+          {
+            "id": "cn-unit-2",
+            "title": "Unit 2 - Data Link Layer and Network Layer Fundamentals",
+            "topics": [
+              "Framing and Error Detection",
+              "Ethernet and MAC Addressing",
+              "Switches and VLANs",
+              "ARP and IP Addressing",
+              "Subnetting and CIDR",
+              "ICMP and Diagnostics"
+            ]
+          }
+        ],
+        "topics": [
+          {
+            "title": "Introduction to Computer Networks",
+            "narration": "Learn how hosts exchange data using packets, protocols, and links across local and wide area networks."
+          },
+          {
+            "title": "Network Topologies",
+            "narration": "Compare bus, ring, star, and mesh layouts and understand when each design is used in practice."
+          },
+          {
+            "title": "OSI Model",
+            "narration": "Break down the seven layers of the OSI model and understand how data moves through the networking stack."
+          },
+          {
+            "title": "TCP/IP Model",
+            "narration": "Understand the practical four-layer TCP/IP model and how it maps to real networking protocols."
+          },
+          {
+            "title": "ARP and IP Addressing",
+            "narration": "See how devices map IP addresses to MAC addresses and route packets inside a network."
+          },
+          {
+            "title": "Subnetting and CIDR",
+            "narration": "Practice logical network segmentation and learn to calculate efficient address ranges."
+          }
+        ]
+      },
+      {
+        "id": "cloud-computing",
+        "title": "Cloud Computing",
+        "units": [
+          {
+            "id": "cloud-unit-1",
+            "title": "Unit 1 - Cloud Basics",
+            "topics": [
+              "Cloud Basics",
+              "Virtualization",
+              "IaaS PaaS SaaS"
+            ]
+          },
+          {
+            "id": "cloud-unit-2",
+            "title": "Unit 2 - Modern Cloud Platforms",
+            "topics": [
+              "Kubernetes Essentials",
+              "Serverless",
+              "Cloud Security Basics"
+            ]
+          }
+        ],
+        "topics": [
+          {
+            "title": "Cloud Basics",
+            "narration": "Understand why cloud platforms exist, how they reduce infrastructure friction, and where they fit in modern software delivery."
+          },
+          {
+            "title": "Virtualization",
+            "narration": "Learn how virtual machines abstract hardware resources and make elastic infrastructure possible."
+          },
+          {
+            "title": "IaaS PaaS SaaS",
+            "narration": "Compare service models and map them to real-world product and infrastructure decisions."
+          },
+          {
+            "title": "Kubernetes Essentials",
+            "narration": "Get the basics of containers, orchestration, deployment scaling, and service discovery."
+          },
+          {
+            "title": "Serverless",
+            "narration": "Learn when serverless functions are ideal and how they change cost, deployment, and scaling patterns."
+          }
+        ]
+      },
+      {
+        "id": "artificial-intelligence",
+        "title": "Artificial Intelligence and Machine Learning",
+        "units": [
+          {
+            "id": "aiml-unit-1",
+            "title": "Unit 1 - ML Foundations",
+            "topics": [
+              "AI Fundamentals",
+              "Supervised Learning",
+              "Unsupervised Learning"
+            ]
+          },
+          {
+            "id": "aiml-unit-2",
+            "title": "Unit 2 - Model Building",
+            "topics": [
+              "Neural Networks Intro",
+              "Model Evaluation",
+              "Bias and Variance"
+            ]
+          }
+        ],
+        "topics": [
+          {
+            "title": "AI Fundamentals",
+            "narration": "Build intuition for what makes a system intelligent and how AI differs from traditional rule-based programming."
+          },
+          {
+            "title": "Supervised Learning",
+            "narration": "Understand labeled data, prediction tasks, and how models learn relationships from examples."
+          },
+          {
+            "title": "Unsupervised Learning",
+            "narration": "Explore clustering and structure discovery in datasets without labeled outputs."
+          },
+          {
+            "title": "Neural Networks Intro",
+            "narration": "See how layered models learn increasingly complex patterns from raw input features."
+          },
+          {
+            "title": "Model Evaluation",
+            "narration": "Learn to judge models using train-test splits, accuracy, precision, recall, and generalization."
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "starter-mba-term-1",
+    "name": "Management Starter Pack",
+    "departmentId": "management",
+    "departmentName": "Management",
+    "programId": "mba-core",
+    "programName": "MBA Core",
+    "termId": "term-1",
+    "termName": "Term 1",
+    "reviewStatus": "approved",
+    "subjects": [
+      {
+        "id": "principles-of-management",
+        "title": "Principles of Management",
+        "units": [
+          {
+            "id": "pom-unit-1",
+            "title": "Unit 1 - Management Foundations",
+            "topics": [
+              "Nature of Management",
+              "Managerial Roles",
+              "Levels of Management"
+            ]
+          },
+          {
+            "id": "pom-unit-2",
+            "title": "Unit 2 - Planning and Organising",
+            "topics": [
+              "Planning Process",
+              "Decision Making",
+              "Organisational Structure"
+            ]
+          }
+        ],
+        "topics": [
+          {
+            "title": "Nature of Management",
+            "narration": "Understand management as a coordinated process of planning, organizing, leading, and controlling business activity."
+          },
+          {
+            "title": "Managerial Roles",
+            "narration": "Study the informational, interpersonal, and decisional roles managers perform every day."
+          },
+          {
+            "title": "Planning Process",
+            "narration": "Learn how organizations define goals, choose strategies, and align resources through planning."
+          }
+        ]
+      },
+      {
+        "id": "marketing-management",
+        "title": "Marketing Management",
+        "units": [
+          {
+            "id": "mm-unit-1",
+            "title": "Unit 1 - Marketing Basics",
+            "topics": [
+              "Marketing Concepts",
+              "Customer Value",
+              "Segmentation Targeting Positioning"
+            ]
+          },
+          {
+            "id": "mm-unit-2",
+            "title": "Unit 2 - Marketing Mix",
+            "topics": [
+              "Product Strategy",
+              "Pricing Strategy",
+              "Promotion Strategy"
+            ]
+          }
+        ],
+        "topics": [
+          {
+            "title": "Marketing Concepts",
+            "narration": "See how marketing evolved from production focus to customer-centric value creation."
+          },
+          {
+            "title": "Customer Value",
+            "narration": "Understand how brands win by solving real customer problems and shaping expectations."
+          },
+          {
+            "title": "Segmentation Targeting Positioning",
+            "narration": "Learn how marketers choose audience groups and craft differentiated market positions."
+          }
+        ]
+      },
+      {
+        "id": "financial-accounting",
+        "title": "Financial Accounting for Managers",
+        "units": [
+          {
+            "id": "fa-unit-1",
+            "title": "Unit 1 - Accounting Foundations",
+            "topics": [
+              "Accounting Principles",
+              "Journal and Ledger",
+              "Trial Balance"
+            ]
+          },
+          {
+            "id": "fa-unit-2",
+            "title": "Unit 2 - Financial Statements",
+            "topics": [
+              "Income Statement",
+              "Balance Sheet",
+              "Cash Flow Statement"
+            ]
+          }
+        ],
+        "topics": [
+          {
+            "title": "Accounting Principles",
+            "narration": "Build the base needed to read and reason about business financial records with confidence."
+          },
+          {
+            "title": "Journal and Ledger",
+            "narration": "Understand how transactions are recorded, classified, and posted into accounts."
+          },
+          {
+            "title": "Balance Sheet",
+            "narration": "Learn how assets, liabilities, and owner equity reveal business financial position."
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "starter-bcom-semester-2",
+    "name": "Commerce Starter Pack",
+    "departmentId": "commerce",
+    "departmentName": "Commerce",
+    "programId": "bcom",
+    "programName": "B.Com",
+    "termId": "semester-2",
+    "termName": "Semester 2",
+    "reviewStatus": "approved",
+    "subjects": [
+      {
+        "id": "financial-accounting",
+        "title": "Financial Accounting",
+        "units": [
+          {
+            "id": "bcom-fa-unit-1",
+            "title": "Unit 1 - Fundamentals",
+            "topics": [
+              "Accounting Concepts",
+              "Double Entry System",
+              "Rectification of Errors"
+            ]
+          },
+          {
+            "id": "bcom-fa-unit-2",
+            "title": "Unit 2 - Statements",
+            "topics": [
+              "Final Accounts",
+              "Depreciation",
+              "Bills of Exchange"
+            ]
+          }
+        ],
+        "topics": [
+          {
+            "title": "Accounting Concepts",
+            "narration": "Understand the core assumptions and conventions that support financial reporting."
+          },
+          {
+            "title": "Double Entry System",
+            "narration": "Learn why every transaction affects at least two accounts and how the accounting equation stays balanced."
+          },
+          {
+            "title": "Final Accounts",
+            "narration": "Prepare the core statements used to summarize business performance and position."
+          }
+        ]
+      },
+      {
+        "id": "business-law",
+        "title": "Business Law",
+        "units": [
+          {
+            "id": "law-unit-1",
+            "title": "Unit 1 - Contract Basics",
+            "topics": [
+              "Essentials of a Valid Contract",
+              "Offer and Acceptance",
+              "Consideration"
+            ]
+          },
+          {
+            "id": "law-unit-2",
+            "title": "Unit 2 - Contract Performance",
+            "topics": [
+              "Capacity to Contract",
+              "Breach of Contract",
+              "Remedies"
+            ]
+          }
+        ],
+        "topics": [
+          {
+            "title": "Essentials of a Valid Contract",
+            "narration": "Learn the conditions that make an agreement legally enforceable in commercial settings."
+          },
+          {
+            "title": "Offer and Acceptance",
+            "narration": "See how agreements are formed through clear intention and communicated acceptance."
+          },
+          {
+            "title": "Breach of Contract",
+            "narration": "Understand what happens when promised obligations are not performed."
+          }
+        ]
+      },
+      {
+        "id": "business-statistics",
+        "title": "Business Statistics",
+        "units": [
+          {
+            "id": "stats-unit-1",
+            "title": "Unit 1 - Descriptive Statistics",
+            "topics": [
+              "Measures of Central Tendency",
+              "Dispersion",
+              "Index Numbers"
+            ]
+          },
+          {
+            "id": "stats-unit-2",
+            "title": "Unit 2 - Applied Business Statistics",
+            "topics": [
+              "Correlation",
+              "Regression",
+              "Time Series"
+            ]
+          }
+        ],
+        "topics": [
+          {
+            "title": "Measures of Central Tendency",
+            "narration": "Compare mean, median, and mode and understand when each measure best summarizes data."
+          },
+          {
+            "title": "Correlation",
+            "narration": "Study how variables move together and why correlation does not always imply causation."
+          },
+          {
+            "title": "Regression",
+            "narration": "Learn how businesses estimate relationships and predict outcomes from historical data."
+          }
+        ]
+      }
+    ]
+  }
+]

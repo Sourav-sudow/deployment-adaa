@@ -1,0 +1,191 @@
+[
+  {
+    "id": "krmu",
+    "slug": "krmu",
+    "name": "K.R. Mangalam University",
+    "shortName": "KRMU",
+    "city": "Gurugram",
+    "state": "Haryana",
+    "emailDomains": ["krmu.edu.in"],
+    "verificationRules": {
+      "otpEnabled": true,
+      "trustedDomains": ["krmu.edu.in"]
+    },
+    "departments": [
+      {
+        "id": "cs-engineering",
+        "name": "CS / Engineering",
+        "programs": [
+          {
+            "id": "bca",
+            "name": "Bachelor of Computer Applications",
+            "terms": [
+              {
+                "id": "semester-6",
+                "name": "Semester 6"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "management",
+        "name": "Management",
+        "programs": [
+          {
+            "id": "mba-core",
+            "name": "MBA Core",
+            "terms": [
+              {
+                "id": "term-1",
+                "name": "Term 1"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "commerce",
+        "name": "Commerce",
+        "programs": [
+          {
+            "id": "bcom",
+            "name": "B.Com",
+            "terms": [
+              {
+                "id": "semester-2",
+                "name": "Semester 2"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "cu",
+    "slug": "chandigarh-university",
+    "name": "Chandigarh University",
+    "shortName": "CU",
+    "city": "Mohali",
+    "state": "Punjab",
+    "emailDomains": ["cumail.in", "cuchd.in"],
+    "verificationRules": {
+      "otpEnabled": true,
+      "trustedDomains": ["cumail.in", "cuchd.in"]
+    },
+    "departments": [
+      {
+        "id": "cs-engineering",
+        "name": "CS / Engineering",
+        "programs": [
+          {
+            "id": "bca",
+            "name": "Bachelor of Computer Applications",
+            "terms": [
+              {
+                "id": "semester-6",
+                "name": "Semester 6"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "management",
+        "name": "Management",
+        "programs": [
+          {
+            "id": "mba-core",
+            "name": "MBA Core",
+            "terms": [
+              {
+                "id": "term-1",
+                "name": "Term 1"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "commerce",
+        "name": "Commerce",
+        "programs": [
+          {
+            "id": "bcom",
+            "name": "B.Com",
+            "terms": [
+              {
+                "id": "semester-2",
+                "name": "Semester 2"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "srm",
+    "slug": "srmist",
+    "name": "SRM Institute of Science and Technology",
+    "shortName": "SRMIST",
+    "city": "Chennai",
+    "state": "Tamil Nadu",
+    "emailDomains": ["srmist.edu.in", "ktr.srmuniv.ac.in"],
+    "verificationRules": {
+      "otpEnabled": true,
+      "trustedDomains": ["srmist.edu.in", "ktr.srmuniv.ac.in"]
+    },
+    "departments": [
+      {
+        "id": "cs-engineering",
+        "name": "CS / Engineering",
+        "programs": [
+          {
+            "id": "bca",
+            "name": "Bachelor of Computer Applications",
+            "terms": [
+              {
+                "id": "semester-6",
+                "name": "Semester 6"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "management",
+        "name": "Management",
+        "programs": [
+          {
+            "id": "mba-core",
+            "name": "MBA Core",
+            "terms": [
+              {
+                "id": "term-1",
+                "name": "Term 1"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "commerce",
+        "name": "Commerce",
+        "programs": [
+          {
+            "id": "bcom",
+            "name": "B.Com",
+            "terms": [
+              {
+                "id": "semester-2",
+                "name": "Semester 2"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]

@@ -1,0 +1,156 @@
+{
+	"computer_networks": {
+		"unit1": {
+			"Introduction to Computer Networks": [
+				"https://www.youtube.com/embed/4D55Cmj2t-A",
+				"https://www.youtube.com/embed/8mve0zR3w0w"
+			],
+			"Network Topologies": [
+				"https://www.youtube.com/embed/uDulBxDb7GM",
+				"https://www.youtube.com/embed/3QhU9jd03a0"
+			],
+			"OSI Model": [
+				"https://www.youtube.com/embed/1msEo8PIcbw",
+				"https://www.youtube.com/embed/5e7wT1b4g3A"
+			],
+			"TCP/IP Model": [
+				"https://www.youtube.com/embed/2QGgEk20RXM",
+				"https://www.youtube.com/embed/6vF2bA9p7bA"
+			],
+			"Data Transmission Concepts": [
+				"https://www.youtube.com/embed/seG-aeL3LdA",
+				"https://www.youtube.com/embed/9Q6sLbz37gk"
+			],
+			"Network Devices": [
+				"https://www.youtube.com/embed/0pMm_QxCg3I",
+				"https://www.youtube.com/embed/2Q6sLbz37gk"
+			],
+			"Transmission Media": [
+				"https://www.youtube.com/embed/CYXeiIakVXY",
+				"https://www.youtube.com/embed/4Q6sLbz37gk"
+			]
+		},
+		"unit2": {
+			"Framing & Error Detection": [
+				"https://www.youtube.com/embed/NhpzBldHOYo",
+				"https://www.youtube.com/embed/1Q6sLbz37gk"
+			],
+			"Ethernet & MAC Addressing": [
+				"https://www.youtube.com/embed/TIiQiw7fpsU",
+				"https://www.youtube.com/embed/2Q6sLbz37gk"
+			],
+			"Switches & VLANs": [
+				"https://www.youtube.com/embed/fwbgJgxkc0k",
+				"https://www.youtube.com/embed/3Q6sLbz37gk"
+			],
+			"ARP & IP Addressing": [
+				"https://www.youtube.com/embed/IUSyV2BVh4A",
+				"https://www.youtube.com/embed/4Q6sLbz37gk"
+			],
+			"Subnetting & CIDR": [
+				"https://www.youtube.com/embed/OqsXzkXfwRw",
+				"https://www.youtube.com/embed/5Q6sLbz37gk"
+			],
+			"ICMP & Diagnostics": [
+				"https://www.youtube.com/embed/xTqtm7-k25o",
+				"https://www.youtube.com/embed/6Q6sLbz37gk"
+			]
+		},
+		"unit3": {
+			"Static vs Dynamic Routing": [
+				"https://www.youtube.com/embed/Gxdzj52hfi0",
+				"https://www.youtube.com/embed/7Q6sLbz37gk"
+			],
+			"RIP & OSPF (basics)": [
+				"https://www.youtube.com/embed/rLNmrFh-sd8",
+				"https://www.youtube.com/embed/8Q6sLbz37gk"
+			],
+			"NAT & Port Forwarding": [
+				"https://www.youtube.com/embed/47PUj7OSGkA",
+				"https://www.youtube.com/embed/9Q6sLbz37gk"
+			],
+			"TCP vs UDP": [
+				"https://www.youtube.com/embed/jJyXpMmXJI0",
+				"https://www.youtube.com/embed/0Q6sLbz37gk"
+			],
+			"Flow Control & Congestion Control": [
+				"https://www.youtube.com/embed/yNedVgNyE8Q",
+				"https://www.youtube.com/embed/1Q6sLbz37gk"
+			],
+			"Ports & Sockets": [
+				"https://www.youtube.com/embed/jnHHpNRrdwA",
+				"https://www.youtube.com/embed/2Q6sLbz37gk"
+			]
+		},
+		"unit4": {
+			"DNS Basics": [
+				"https://www.youtube.com/embed/vhfRArT11jc",
+				"https://www.youtube.com/embed/3Q6sLbz37gk"
+			],
+			"HTTP/HTTPS": [
+				"https://www.youtube.com/embed/FmgIQBQ87fo",
+				"https://www.youtube.com/embed/4Q6sLbz37gk"
+			],
+			"Email Protocols (SMTP/IMAP/POP3)": [
+				"https://www.youtube.com/embed/cjPVlxmf_Vk",
+				"https://www.youtube.com/embed/5Q6sLbz37gk"
+			],
+			"FTP vs SFTP": [
+				"https://www.youtube.com/embed/EDvARXCu3VQ",
+				"https://www.youtube.com/embed/6Q6sLbz37gk"
+			],
+			"DHCP & IP Allocation": [
+				"https://www.youtube.com/embed/FWRBMeofRsM",
+				"https://www.youtube.com/embed/7Q6sLbz37gk"
+			],
+			"Network Utilities (ping, traceroute)": [
+				"https://www.youtube.com/embed/vJV-GBZ6PeM",
+				"https://www.youtube.com/embed/8Q6sLbz37gk"
+			]
+		}
+	},
+	"mobile_app_development": {
+		"unit1": {
+			"Android Basics": "https://www.youtube.com/embed/mXjZQX3UzOs",
+			"Flutter Intro": "https://www.youtube.com/embed/fq4N0hgOWzU",
+			"iOS SwiftUI Basics": "https://www.youtube.com/embed/ysRiQ_b4-6E",
+			"State Management": "https://www.youtube.com/embed/L_0JYq0pjx8",
+			"Publishing Apps": "https://www.youtube.com/embed/BLsJZ7nDZPs"
+		}
+	},
+	"generative_models_and_applications": {
+		"unit1": {
+			"What is Generative AI": "https://www.youtube.com/embed/NRmAXDWJVnU",
+			"Traditional AI vs Generative AI": "https://www.youtube.com/embed/4-TdAQyiApQ",
+			"Generative Model Types (GANs, Transformers, Diffusion Models)": "https://www.youtube.com/embed/9T9pTIfGgbo",
+			"Real-world GenAI use cases (chatbots, art generation, content creation)": "https://www.youtube.com/embed/Ts42JTye-AI",
+			"GenAI ecosystem (OpenAI, Stability AI, Hugging Face, Midjourney)": "https://www.youtube.com/embed/VYUwzLbvZlE",
+			"Ethics in Generative AI": "https://www.youtube.com/embed/aGwYtUzMQUk"
+		},
+		"unit2": {
+			"What are Large Language Models (LLMs)": "https://www.youtube.com/embed/hYZKrPOyEYk",
+			"GPT, Claude and Gemini overview": "https://www.youtube.com/embed/MkrHgBVO0NY",
+			"Prompt Engineering Fundamentals": "https://www.youtube.com/embed/jhKvoUfMPgc",
+			"Prompt types (zero-shot, one-shot, few-shot)": "https://www.youtube.com/embed/sW5xoicq5TY",
+			"Using APIs for text generation (OpenAI / Google / Hugging Face)": "https://www.youtube.com/embed/_y3DtZmZYpc",
+			"Text generation use cases (summarization, blog writing, Q&A)": "https://www.youtube.com/embed/8V20HkNtvmI",
+			"Ethical concerns in text generation": "https://www.youtube.com/embed/7Rb4s9wNOmc"
+		},
+		"unit3": {
+			"Image generation models (Stable Diffusion, DALL-E, Midjourney)": "https://www.youtube.com/embed/x2GRE-RzmD8",
+			"Text-to-image generation": "https://www.youtube.com/embed/9YrYDqhJdPw",
+			"Prompt strategies for image generation": "https://www.youtube.com/embed/nnlgMpyq-j0",
+			"AI tools for image generation (Runway ML, Canva AI, Stable Diffusion)": "https://www.youtube.com/embed/W-O7AZNzbzQ",
+			"Multimedia AI generation (audio, video, code)": "https://www.youtube.com/embed/UjtOGPJ0URM",
+			"Ethics of AI-generated media": "https://www.youtube.com/embed/8V20HkNtvmI"
+		},
+		"unit4": {
+			"Evaluating AI output quality (fluency, realism, coherence)": "https://www.youtube.com/embed/8V20HkNtvmI",
+			"Evaluation metrics (BLEU, CLIPScore)": "https://www.youtube.com/embed/7Rb4s9wNOmc",
+			"Building GenAI applications": "https://www.youtube.com/embed/OuZrhykVytg",
+			"Project ideas using Generative AI (chatbot, generator tools)": "https://www.youtube.com/embed/W-O7AZNzbzQ",
+			"Deploying AI applications using cloud": "https://www.youtube.com/embed/UjtOGPJ0URM",
+			"Ethical and legal challenges in Generative AI": "https://www.youtube.com/embed/8V20HkNtvmI"
+		}
+	}
+}
