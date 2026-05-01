@@ -180,38 +180,6 @@ function getRelatedTopicTitles(topic: string, unitTopics: string[], subjectTopic
     .slice(0, 5);
 }
 
-function getPreferredFemaleVoice() {
-  const voices = window.speechSynthesis.getVoices();
-  const preferredNames = [
-    "Moira",
-    "Tessa",
-    "Samantha",
-    "Serena",
-    "Ava",
-    "Allison",
-    "Susan",
-    "Karen",
-    "Tessa",
-    "Veena",
-    "Google UK English Female",
-    "Google UK English Female",
-    "Google US English",
-    "Microsoft Sonia",
-    "Microsoft Jenny",
-    "Microsoft Aria",
-    "Microsoft Zira",
-  ];
-
-  return (
-    voices.find((voice) =>
-      preferredNames.some((name) => voice.name.toLowerCase().includes(name.toLowerCase()))
-    ) ||
-    voices.find((voice) => /female|woman|moira|tessa|samantha|serena|ava|allison|susan|sonia|jenny|aria|veena/i.test(voice.name)) ||
-    voices.find((voice) => voice.lang.toLowerCase().startsWith("en")) ||
-    null
-  );
-}
-
 function buildStudyPlan(topic: string): StudyPlanItem[] {
   if (!topic) return [];
 
@@ -231,10 +199,6 @@ function buildStudyPlan(topic: string): StudyPlanItem[] {
   ];
 }
 
-function buildStudyPlanSpeech(topic: string) {
-  return `Today's study plan for ${topic}. First, watch the video. Second, revise the quick notes. Third, attempt the five mark questions. Keep it simple and finish one step at a time.`;
-}
-
 const LearningPage = () => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -250,7 +214,6 @@ const LearningPage = () => {
   const sharedTopicHandledRef = useRef("");
   const examWeekLaunchTimerRef = useRef<number | null>(null);
   const demoTopicPreloadedRef = useRef(false);
-  const lastSpokenStudyPlanRef = useRef("");
 
   const profileRef = useRef<HTMLDivElement | null>(null);
   const searchRef = useRef<HTMLDivElement | null>(null);
@@ -383,7 +346,6 @@ const LearningPage = () => {
   const [focusRunning, setFocusRunning] = useState(false);
   const [videoLanguage, setVideoLanguage] = useState<"english" | "hindi">("english");
   const [videoLength, setVideoLength] = useState<"short" | "long">("long");
-  const [studyPlanSpeaking, setStudyPlanSpeaking] = useState(false);
 
   const displayTitle = selectedTopicTitle || "";
   const displayNarration = selectedTopicNarration || "";
@@ -673,45 +635,6 @@ const LearningPage = () => {
   };
 
   useEffect(() => {
-    return () => {
-      window.speechSynthesis.cancel();
-      setStudyPlanSpeaking(false);
-    };
-  }, []);
-
-  useEffect(() => {
-    window.speechSynthesis.cancel();
-    setStudyPlanSpeaking(false);
-  }, [currentSlideIndex, displayNarration]);
-
-  const speakStudyPlan = (topicTitle = displayTitle) => {
-    if (!topicTitle || typeof window === "undefined" || !window.speechSynthesis) return;
-
-    if (studyPlanSpeaking) {
-      window.speechSynthesis.cancel();
-      setStudyPlanSpeaking(false);
-      return;
-    }
-
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(buildStudyPlanSpeech(topicTitle));
-    const voice = getPreferredFemaleVoice();
-    if (voice) {
-      utterance.voice = voice;
-      utterance.lang = voice.lang || "en-IN";
-    } else {
-      utterance.lang = "en-IN";
-    }
-    utterance.rate = 0.86;
-    utterance.pitch = 1.02;
-    utterance.volume = 0.82;
-    utterance.onend = () => setStudyPlanSpeaking(false);
-    utterance.onerror = () => setStudyPlanSpeaking(false);
-    setStudyPlanSpeaking(true);
-    window.speechSynthesis.speak(utterance);
-  };
-
-  useEffect(() => {
     if (!displayTitle) {
       setExamQuestions(null);
       return;
@@ -907,10 +830,6 @@ const LearningPage = () => {
     saveRecentTopic(savedTopic);
     syncBookmarkedTopicMetadata(savedTopic);
     setSearchDropdownOpen(false);
-    if (lastSpokenStudyPlanRef.current.toLowerCase() !== matchedTopic.title.toLowerCase()) {
-      lastSpokenStudyPlanRef.current = matchedTopic.title;
-      window.setTimeout(() => speakStudyPlan(matchedTopic.title), 250);
-    }
   };
 
   const handleSuggestedTopicSelect = (title: string) => {
@@ -2054,7 +1973,7 @@ const LearningPage = () => {
               : "border-cyan-200 bg-cyan-50/80 shadow-[0_24px_80px_-50px_rgba(14,165,233,0.35)]"
           }`}
         >
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
             <div>
               <p className={`text-xs font-semibold uppercase tracking-[0.22em] ${
                 isDarkTheme ? "text-cyan-200/70" : "text-cyan-700"
@@ -2065,21 +1984,6 @@ const LearningPage = () => {
                 Finish {displayTitle} in 3 simple steps
               </h2>
             </div>
-            <button
-              type="button"
-              onClick={() => speakStudyPlan()}
-              className={`inline-flex items-center justify-center rounded-xl border px-4 py-2 text-sm font-semibold transition ${
-                studyPlanSpeaking
-                  ? isDarkTheme
-                    ? "border-rose-300/25 bg-rose-300/12 text-rose-100 hover:bg-rose-300/18"
-                    : "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
-                  : isDarkTheme
-                    ? "border-cyan-200/20 bg-cyan-200/10 text-cyan-100 hover:bg-cyan-200/16"
-                    : "border-cyan-200 bg-white text-cyan-800 hover:bg-cyan-100"
-              }`}
-            >
-              {studyPlanSpeaking ? "Stop voice" : "Play voice"}
-            </button>
           </div>
           <div className="mt-4 grid gap-3 md:grid-cols-3">
             {studyPlan.map((item, index) => (
